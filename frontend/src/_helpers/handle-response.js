@@ -5,13 +5,21 @@ import SolidIcon from '../_ui/Icon/SolidIcons';
 import { copyToClipboard } from '@/_helpers/appUtils';
 import { sessionService } from '@/_services';
 import { redirectToSwitchOrArchivedAppPage } from './routes';
+import { handleError } from './handleAppAccess';
+import { fetchEdition } from '@/modules/common/helpers/utils';
+import { ERROR_TYPES } from './constants';
 
 const copyFunction = (input) => {
   let text = document.getElementById(input).innerHTML;
   copyToClipboard(text);
 };
 
-export function handleResponse(response, avoidRedirection = false, queryParamToUpdate = null) {
+export function handleResponse(
+  response,
+  avoidRedirection = false,
+  queryParamToUpdate = null,
+  avoidUpgradeModal = false
+) {
   return response.text().then((text) => {
     let modalBody = (
       <>
@@ -28,11 +36,21 @@ export function handleResponse(response, avoidRedirection = false, queryParamToU
     );
     const data = text && JSON.parse(text);
     if (!response.ok) {
+      // Custom friendly error messages
+      if (response.status === 422 && typeof data?.message === 'string') {
+        if (data.message.includes('value too long for type character varying(50)')) {
+          data.message = 'Failed to duplicate group.\nName exceeds 50 characters.';
+        }
+      }
       if ([401].indexOf(response.status) !== -1) {
         // auto logout if 401 Unauthorized or 403 Forbidden response returned from api
         const errorMessageJson = typeof data.message === 'string' ? JSON.parse(data.message) : undefined;
         const workspaceId = errorMessageJson?.organizationId;
         avoidRedirection ? sessionService.logout(false, workspaceId) : location.reload(true);
+      } else if ([403].indexOf(response.status) !== -1 && data?.message === ERROR_TYPES.NO_ACCESSIBLE_PAGES) {
+        handleError('', { data });
+      } else if ([403].indexOf(response.status) !== -1 && data?.message === ERROR_TYPES.RESTRICTED_PREVIEW) {
+        handleError('', { data });
       } else if ([451].indexOf(response.status) !== -1) {
         // a popup will show when the response meet the following conditions
         const url = response.url;
@@ -63,15 +81,17 @@ export function handleResponse(response, avoidRedirection = false, queryParamToU
           }
         }
         const darkMode = localStorage.getItem('darkMode') === 'true';
+        const edition = fetchEdition();
         const modalEl = React.createElement(LegalReasonsErrorModal, {
           showModal: true,
           message,
           body: message.includes('apps') && modalBody,
           feature,
           darkMode,
+          edition: edition,
         });
 
-        if (!message?.includes('expired')) {
+        if (!message?.includes('expired') || avoidUpgradeModal) {
           ReactDOM.render(modalEl, document.getElementById('modal-div'));
         }
       } else if ([400].indexOf(response.status) !== -1) {

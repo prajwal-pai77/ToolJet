@@ -31,11 +31,13 @@ export const ON_BOARDING_ROLES = [
 export const ERROR_TYPES = {
   URL_UNAVAILABLE: 'url-unavailable',
   RESTRICTED: 'restricted',
+  NO_ACCESSIBLE_PAGES: 'no-accessible-pages',
   INVALID: 'invalid-link',
   UNKNOWN: 'unknown',
   WORKSPACE_ARCHIVED: 'Organization is Archived',
   USERS_EXCEEDING_LICENSE_LIMIT: 'user-count-exceeding',
   WORKSPACE_LOGIN_RESTRICTED: 'ws-login-restricted',
+  RESTRICTED_PREVIEW: 'restricted-preview',
 };
 
 export const ERROR_MESSAGES = {
@@ -50,6 +52,19 @@ export const ERROR_MESSAGES = {
     title: 'Restricted access',
     message: 'You don’t have access to this app. Kindly contact admin to know more.',
     cta: 'Back to home page',
+    retry: false,
+    queryParams: [],
+  },
+  'restricted-preview': {
+    title: 'Restricted access',
+    message: 'Access to this environment preview is restricted. Contact admin to know more.',
+    retry: false,
+    cta: 'Back to home page',
+    queryParams: [],
+  },
+  'no-accessible-pages': {
+    title: 'Restricted access',
+    message: 'You don’t have access to any page in this app. Kindly contact admin to know more.',
     retry: false,
     queryParams: [],
   },
@@ -135,4 +150,11 @@ export const DATA_SOURCE_TYPE = {
 export const SAMPLE_DB_KIND = {
   POSTGRESQL: 'postgresql',
   TOOLJET_DB: 'tooljetdb',
+};
+
+export const PLANS = {
+  BUSINESS: 'business',
+  ENTERPRISE: 'enterprise',
+  TRIAL: 'trial',
+  STARTER: 'starter',
 };

@@ -7,7 +7,7 @@ import { SelectBox } from './Select';
 import SolidIcon from '@/_ui/Icon/SolidIcons';
 import { TooljetDatabaseContext } from '@/TooljetDatabase/index';
 import { v4 as uuidv4 } from 'uuid';
-import { Confirm } from '@/Editor/Viewer/Confirm';
+import { Confirm } from '@/AppBuilder/Viewer/Confirm';
 import { toast } from 'react-hot-toast';
 import { ToolTip } from '@/_components';
 export const AggregateFilter = ({ darkMode, operation = '' }) => {
@@ -277,7 +277,11 @@ export const AggregateFilter = ({ darkMode, operation = '' }) => {
   };
 
   const aggFxOptions = [
-    { label: 'Sum', value: 'sum', description: 'Sum of all values in this column' },
+    {
+      label: 'Sum',
+      value: 'sum',
+      description: 'Sum of all values in this column',
+    },
     {
       label: 'Count',
       value: 'count',
@@ -351,7 +355,7 @@ export const AggregateFilter = ({ darkMode, operation = '' }) => {
 
   return (
     <>
-      <div className="d-flex" style={{ marginBottom: '1.5rem' }}>
+      <div className="d-flex wf-block" style={{ marginBottom: '1.5rem' }}>
         <label className="form-label flex-shrink-0" data-cy="label-column-filter">
           Aggregate
         </label>
@@ -402,7 +406,11 @@ export const AggregateFilter = ({ darkMode, operation = '' }) => {
                     />
                   </div>
                   <div
-                    style={{ width: '32px', minWidth: '32px', borderRadius: '0 4px 4px 0' }}
+                    style={{
+                      width: '32px',
+                      minWidth: '32px',
+                      borderRadius: '0 4px 4px 0',
+                    }}
                     className="d-flex justify-content-center align-items-center border"
                     onClick={() => handleDeleteAggregate(aggregateKey)}
                   >
@@ -442,7 +450,7 @@ export const AggregateFilter = ({ darkMode, operation = '' }) => {
           </ButtonSolid>
         </div>
       </div>
-      <div className="d-flex" style={{ marginBottom: '1.5rem' }}>
+      <div className="d-flex wf-block" style={{ marginBottom: '1.5rem' }}>
         <label className="form-label flex-shrink-0" data-cy="label-column-filter">
           Group by
         </label>

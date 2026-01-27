@@ -7,6 +7,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class PopulateCEOrgConstantsToOtherEnvs1698841869350 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // if (getTooljetEdition() !== TOOLJET_EDITIONS.EE) {
+    //   console.log('Skipping migration as it is not EE edition');
+    //   return;
+    // }
     const manager = queryRunner.manager;
     const organizations = await manager.find(Organization);
     const migrationProgress = new MigrationProgress(

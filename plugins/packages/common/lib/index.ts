@@ -6,6 +6,8 @@ import { QueryService } from './query_service.interface';
 import {
   isEmpty,
   cacheConnection,
+  cacheConnectionWithConfiguration,
+  generateSourceOptionsHash,
   getCachedConnection,
   parseJson,
   cleanSensitiveData,
@@ -17,6 +19,7 @@ import {
   sanitizeSearchParams,
   fetchHttpsCertsForCustomCA,
   sanitizeSortPairs,
+  getTooljetEdition,
 } from './utils.helper';
 import { ConnectionTestResult } from './connection_test_result.type';
 import {
@@ -37,6 +40,8 @@ export {
   User,
   App,
   cacheConnection,
+  generateSourceOptionsHash,
+  cacheConnectionWithConfiguration,
   getCachedConnection,
   parseJson,
   isEmpty,
@@ -57,4 +62,5 @@ export {
   redactHeaders,
   cookiesToString,
   sanitizeSortPairs,
+  getTooljetEdition,
 };

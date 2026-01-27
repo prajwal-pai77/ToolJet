@@ -59,6 +59,11 @@ export function getLicenseFieldValue(type: LICENSE_FIELD, licenseInstance: Licen
     case LICENSE_FIELD.CUSTOM_THEMES:
       return licenseInstance.customThemes;
 
+    case LICENSE_FIELD.SERVER_SIDE_GLOBAL:
+      return licenseInstance.serverSideGlobalResolve;
+    case LICENSE_FIELD.EXTERNAL_API:
+      return licenseInstance.externalApis;
+
     case LICENSE_FIELD.AUDIT_LOGS:
       return licenseInstance.auditLogs;
 
@@ -79,10 +84,10 @@ export function getLicenseFieldValue(type: LICENSE_FIELD, licenseInstance: Licen
 
     case LICENSE_FIELD.USER:
       return {
-        total: licenseInstance.users,
-        editors: licenseInstance.editorUsers,
-        viewers: licenseInstance.viewerUsers,
-        superadmins: licenseInstance.superadminUsers,
+        total: licenseInstance?.users,
+        editors: licenseInstance?.editorUsers,
+        viewers: licenseInstance?.viewerUsers,
+        superadmins: licenseInstance?.superadminUsers,
       };
 
     case LICENSE_FIELD.FEATURES:
@@ -110,6 +115,28 @@ export function getLicenseFieldValue(type: LICENSE_FIELD, licenseInstance: Licen
 
     case LICENSE_FIELD.AI:
       return licenseInstance.ai;
+
+    case LICENSE_FIELD.SCIM:
+      return licenseInstance.scim;
+
+    case LICENSE_FIELD.PLAN:
+      return licenseInstance.plan;
+    case LICENSE_FIELD.MODULES:
+      return licenseInstance.moduleEnabled;
+    case LICENSE_FIELD.CUSTOM_GROUPS:
+      return licenseInstance.customGroups;
+    case LICENSE_FIELD.APP_PERMISSIONS_COMPONENT:
+      return licenseInstance.appPermissionComponent;
+    case LICENSE_FIELD.APP_PERMISSIONS_QUERY:
+      return licenseInstance.appPermissionQuery;
+    case LICENSE_FIELD.APP_PERMISSIONS_PAGES:
+      return licenseInstance.appPermissionPages;
+    case LICENSE_FIELD.APP_PAGES_ENABLED:
+      return licenseInstance.appPagesEnabled;
+    case LICENSE_FIELD.APP_PAGES_HEADER_AND_LOGO:
+      return licenseInstance.appPagesHeaderAndLogoEnabled;
+    case LICENSE_FIELD.APP_PAGES_NAV_GROUP:
+      return licenseInstance.appPagesAddNavGroupEnabled;
 
     default:
       return licenseInstance.terms;

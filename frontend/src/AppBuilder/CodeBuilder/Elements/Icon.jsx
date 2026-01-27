@@ -7,7 +7,15 @@ import * as Icons from '@tabler/icons-react';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { Visibility } from './Visibility';
 
-export const Icon = ({ value, onChange, onVisibilityChange, styleDefinition, component }) => {
+export const Icon = ({
+  value,
+  onChange,
+  onVisibilityChange,
+  styleDefinition,
+  component,
+  isVisibilityEnabled = true,
+  iconVisibility,
+}) => {
   const [searchText, setSearchText] = useState('');
   const [showPopOver, setPopOverVisibility] = useState(false);
   const iconList = useRef(Object.keys(Icons));
@@ -33,6 +41,7 @@ export const Icon = ({ value, onChange, onVisibilityChange, styleDefinition, com
         id="popover-basic"
         style={{ width: '460px', maxWidth: '460px' }}
         className={`icon-widget-popover ${darkMode && 'dark-theme theme-dark'}`}
+        onClick={(event) => event.stopPropagation()}
       >
         <Popover.Header>
           <SearchBox onSubmit={searchIcon} width="100%" />
@@ -93,13 +102,13 @@ export const Icon = ({ value, onChange, onVisibilityChange, styleDefinition, com
                 overlay={eventPopover()}
               >
                 <div className="d-flex align-items-center" role="button">
-                  <div className="" style={{ marginRight: '2px' }}>
+                  <div className="" style={{ marginRight: '2px', marginLeft: '6px', height: '20px', width: '18px' }}>
                     <IconElement
                       data-cy={`icon-on-side-panel`}
                       color={`${darkMode ? '#fff' : '#000'}`}
                       stroke={1.5}
                       strokeLinejoin="miter"
-                      style={{ width: '24px', height: '24px' }}
+                      style={{ width: '18px', height: '18px' }}
                     />
                   </div>
                   <div
@@ -111,13 +120,16 @@ export const Icon = ({ value, onChange, onVisibilityChange, styleDefinition, com
                   >
                     {String(value)}
                   </div>
-                  <Visibility
-                    value={value}
-                    onChange={onChange}
-                    onVisibilityChange={onVisibilityChange}
-                    component={component}
-                    styleDefinition={styleDefinition}
-                  />
+                  {isVisibilityEnabled && (
+                    <Visibility
+                      value={value}
+                      onChange={onChange}
+                      onVisibilityChange={onVisibilityChange}
+                      component={component}
+                      styleDefinition={styleDefinition}
+                      iconVisibility={iconVisibility}
+                    />
+                  )}
                 </div>
               </OverlayTrigger>
             </div>

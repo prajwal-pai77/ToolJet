@@ -1,10 +1,12 @@
 import {
   ConnectionTestResult,
-  cacheConnection,
+  cacheConnectionWithConfiguration,
+  generateSourceOptionsHash,
   getCachedConnection,
   QueryService,
   QueryResult,
   QueryError,
+  getTooljetEdition,
 } from '@tooljet-plugins/common';
 import { SourceOptions, QueryOptions } from './types';
 import knex, { Knex } from 'knex';
@@ -13,8 +15,11 @@ import { isEmpty } from '@tooljet-plugins/common';
 export default class PostgresqlQueryService implements QueryService {
   private static _instance: PostgresqlQueryService;
   private STATEMENT_TIMEOUT;
+  private tooljet_edition: string;
 
   constructor() {
+    this.tooljet_edition = getTooljetEdition();
+    // Default 120 secs
     this.STATEMENT_TIMEOUT =
       process.env?.PLUGINS_SQL_DB_STATEMENT_TIMEOUT && !isNaN(Number(process.env?.PLUGINS_SQL_DB_STATEMENT_TIMEOUT))
         ? Number(process.env.PLUGINS_SQL_DB_STATEMENT_TIMEOUT)
@@ -33,14 +38,45 @@ export default class PostgresqlQueryService implements QueryService {
     dataSourceId: string,
     dataSourceUpdatedAt: string
   ): Promise<QueryResult> {
+    let pgPool, pgConnection, checkCache, knexInstance;
+
+    if (sourceOptions['allow_dynamic_connection_parameters']) {
+      if (sourceOptions.connection_type === 'manual') {
+        sourceOptions['host'] = queryOptions['host'] ? queryOptions['host'] : sourceOptions['host'];
+        sourceOptions['database'] = queryOptions['database'] ? queryOptions['database'] : sourceOptions['database'];
+      } else if (sourceOptions.connection_type === 'string') {
+        const modifiedConnectionString = new URL(sourceOptions.connection_string);
+        if (queryOptions['host']) modifiedConnectionString.hostname = queryOptions['host'];
+        if (queryOptions['database']) modifiedConnectionString.pathname = `/${queryOptions['database']}`;
+        sourceOptions['connection_string'] = modifiedConnectionString.toString();
+      }
+    }
+
     try {
-      const knexInstance = await this.getConnection(sourceOptions, {}, true, dataSourceId, dataSourceUpdatedAt);
+      // If dynamic connection parameters is toggled on - We don't cache the connection also destroy the connection created.
+      checkCache = sourceOptions['allow_dynamic_connection_parameters'] ? false : true;
+      knexInstance = await this.getConnection(sourceOptions, {}, checkCache, dataSourceId, dataSourceUpdatedAt);
 
       switch (queryOptions.mode) {
-        case 'sql':
-          return await this.handleRawQuery(knexInstance, queryOptions);
-        case 'gui':
+        case 'sql': {
+          if (this.isSqlParametersUsed(queryOptions)) {
+            return await this.handleRawQuery(knexInstance, queryOptions);
+          } else {
+            pgPool = knexInstance.client.pool;
+            pgConnection = await pgPool.acquire().promise;
+            const query = queryOptions.query;
+            let result = { rows: [] };
+
+            result = await pgConnection.query(query);
+            return {
+              status: 'ok',
+              data: result.rows,
+            };
+          }
+        }
+        case 'gui': {
           return await this.handleGuiQuery(knexInstance, queryOptions);
+        }
         default:
           throw new Error("Invalid query mode. Must be either 'sql' or 'gui'.");
       }
@@ -56,6 +92,9 @@ export default class PostgresqlQueryService implements QueryService {
         errorDetails.routine = routine || null;
       }
       throw new QueryError('Query could not be completed', errorMessage, errorDetails);
+    } finally {
+      if (pgPool && pgConnection) pgPool.release(pgConnection);
+      if (!checkCache) await knexInstance.destroy();
     }
   }
 
@@ -65,6 +104,33 @@ export default class PostgresqlQueryService implements QueryService {
     return { status: 'ok' };
   }
 
+  async listTables(
+    sourceOptions: SourceOptions,
+    dataSourceId: string,
+    dataSourceUpdatedAt: string
+  ): Promise<QueryResult> {
+    let knexInstance;
+    try {
+      knexInstance = await this.getConnection(sourceOptions, {}, true, dataSourceId, dataSourceUpdatedAt);
+
+      const { rows } = await knexInstance.raw(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_type = 'BASE TABLE'
+      ORDER BY table_name;
+    `);
+
+      return {
+        status: 'ok',
+        data: rows,
+      };
+    } catch (err) {
+      const errorMessage = err.message || 'An unknown error occurred';
+      throw new QueryError('Could not fetch tables', errorMessage, {});
+    }
+  }
+
   private async handleGuiQuery(knexInstance: Knex, queryOptions: QueryOptions): Promise<any> {
     if (queryOptions.operation !== 'bulk_update_pkey') {
       return { rows: [] };
@@ -72,6 +138,13 @@ export default class PostgresqlQueryService implements QueryService {
 
     const query = this.buildBulkUpdateQuery(queryOptions);
     return await this.executeQuery(knexInstance, query);
+  }
+
+  private isSqlParametersUsed(queryOptions: QueryOptions): boolean {
+    const { query_params } = queryOptions;
+    const queryParams = query_params || [];
+    const sanitizedQueryParams: string[][] = queryParams.filter(([key]) => !isEmpty(key));
+    return !!sanitizedQueryParams.length;
   }
 
   private async handleRawQuery(knexInstance: Knex, queryOptions: QueryOptions): Promise<QueryResult> {
@@ -108,12 +181,12 @@ export default class PostgresqlQueryService implements QueryService {
         password: sourceOptions.password,
         port: sourceOptions.port,
         ssl: this.getSslConfig(sourceOptions),
-        statement_timeout: this.STATEMENT_TIMEOUT,
+        ...(this.tooljet_edition !== 'cloud' ? { statement_timeout: this.STATEMENT_TIMEOUT } : {}),
       };
     } else if (sourceOptions.connection_type === 'string' && sourceOptions.connection_string) {
       connectionConfig = {
         connectionString: sourceOptions.connection_string,
-        ssl: this.getSslConfig(sourceOptions),
+        ...(this.tooljet_edition !== 'cloud' ? { statement_timeout: this.STATEMENT_TIMEOUT } : {}),
       };
     }
     const connectionOptions: Knex.Config = {
@@ -128,7 +201,7 @@ export default class PostgresqlQueryService implements QueryService {
   }
 
   private getSslConfig(sourceOptions: SourceOptions) {
-    if (!sourceOptions.ssl_enabled) return undefined;
+    if (!sourceOptions.ssl_enabled) return false;
 
     return {
       rejectUnauthorized: (sourceOptions.ssl_certificate ?? 'none') !== 'none',
@@ -146,13 +219,17 @@ export default class PostgresqlQueryService implements QueryService {
     dataSourceUpdatedAt?: string
   ): Promise<Knex> {
     if (checkCache) {
-      const cachedConnection = await getCachedConnection(dataSourceId, dataSourceUpdatedAt);
+      const optionsHash = generateSourceOptionsHash(sourceOptions);
+      const enhancedCacheKey = `${dataSourceId}_${optionsHash}`;
+      const cachedConnection = await getCachedConnection(enhancedCacheKey, dataSourceUpdatedAt);
       if (cachedConnection) return cachedConnection;
+
+      const connection = await this.buildConnection(sourceOptions);
+      cacheConnectionWithConfiguration(dataSourceId, enhancedCacheKey, connection);
+      return connection;
     }
 
-    const connection = await this.buildConnection(sourceOptions);
-    if (checkCache && dataSourceId) cacheConnection(dataSourceId, connection);
-    return connection;
+    return await this.buildConnection(sourceOptions);
   }
 
   buildBulkUpdateQuery(queryOptions: QueryOptions): string {

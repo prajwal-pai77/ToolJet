@@ -17,6 +17,10 @@ export default function ModalBase({
   cancelDisabled,
   className = '',
   size = 'sm',
+  headerAction,
+  showHeader = true,
+  showFooter = true,
+  footerBody,
 }) {
   return (
     <Modal
@@ -26,14 +30,17 @@ export default function ModalBase({
       centered={true}
       contentClassName={`${className} ${darkMode ? 'theme-dark dark-theme modal-base' : 'modal-base'}`}
     >
-      <Modal.Header>
-        <Modal.Title className="font-weight-500" data-cy="modal-title">
-          {title}
-        </Modal.Title>
-        <div onClick={handleClose} className="cursor-pointer" data-cy="modal-close-button">
-          <SolidIcon name="remove" width="20" />
-        </div>
-      </Modal.Header>
+      {showHeader && (
+        <Modal.Header>
+          <Modal.Title className="font-weight-500" data-cy="modal-title">
+            {title}
+          </Modal.Title>
+          <div onClick={handleClose} id="header-actions" className="cursor-pointer" data-cy="modal-close-button">
+            {headerAction && headerAction()}
+            <SolidIcon name="remove" width="20" />
+          </div>
+        </Modal.Header>
+      )}
       <Modal.Body data-cy="modal-body">
         {children ? (
           children
@@ -43,28 +50,47 @@ export default function ModalBase({
           </div>
         )}
       </Modal.Body>
-      <Modal.Footer>
-        <ButtonSolid disabled={cancelDisabled} variant={'tertiary'} onClick={handleClose} data-cy="cancel-button">
-          Cancel
-        </ButtonSolid>
-        <ToolTip
-          show={confirmBtnProps?.tooltipMessage && confirmBtnProps?.disabled}
-          message={confirmBtnProps?.tooltipMessage}
-        >
-          <div>
-            <ButtonSolid
-              disabled={isLoading || confirmBtnProps?.disabled}
-              isLoading={isLoading}
-              variant={confirmBtnProps?.variant || 'primary'}
-              onClick={handleConfirm}
-              {...confirmBtnProps}
-              data-cy="confim-button"
-            >
-              {confirmBtnProps?.title || 'Continue'}
-            </ButtonSolid>
-          </div>
-        </ToolTip>
-      </Modal.Footer>
+      {showFooter && (
+        <Modal.Footer>
+          {footerBody ? (
+            footerBody
+          ) : (
+            <>
+              <ButtonSolid disabled={cancelDisabled} variant="tertiary" onClick={handleClose} data-cy="cancel-button">
+                Cancel
+              </ButtonSolid>
+
+              {confirmBtnProps?.tooltipMessage && confirmBtnProps?.disabled ? (
+                <ToolTip show={true} message={confirmBtnProps?.tooltipMessage}>
+                  <div>
+                    <ButtonSolid
+                      disabled={isLoading || confirmBtnProps?.disabled}
+                      isLoading={isLoading}
+                      variant={confirmBtnProps?.variant || 'primary'}
+                      onClick={handleConfirm}
+                      {...confirmBtnProps}
+                      data-cy="confirm-button"
+                    >
+                      {confirmBtnProps?.title || 'Continue'}
+                    </ButtonSolid>
+                  </div>
+                </ToolTip>
+              ) : (
+                <ButtonSolid
+                  disabled={isLoading || confirmBtnProps?.disabled}
+                  isLoading={isLoading}
+                  variant={confirmBtnProps?.variant || 'primary'}
+                  onClick={handleConfirm}
+                  {...confirmBtnProps}
+                  data-cy="confirm-button"
+                >
+                  {confirmBtnProps?.title || 'Continue'}
+                </ButtonSolid>
+              )}
+            </>
+          )}
+        </Modal.Footer>
+      )}
     </Modal>
   );
 }

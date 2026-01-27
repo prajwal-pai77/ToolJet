@@ -3,6 +3,7 @@ import { Calendar as ReactCalendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { CalendarEventPopover } from './CalendarPopover';
+import './Calendar.scss';
 import _ from 'lodash';
 
 const localizer = momentLocalizer(moment);
@@ -39,7 +40,7 @@ export const Calendar = function ({
   setExposedVariable,
   dataCy,
 }) {
-  const style = { height };
+  const style = { height, borderRadius: `${styles.borderRadius}px`, overflow: 'hidden' };
   const resourcesParam = properties.resources?.length === 0 ? {} : { resources: properties.resources };
   const events = Array.isArray(properties?.events)
     ? properties?.events?.map((event) => prepareEvent(event, properties.dateFormat))
@@ -57,7 +58,7 @@ export const Calendar = function ({
   const isInitialRender = useRef(true);
 
   const eventPropGetter = (event) => {
-    const backgroundColor = event.color;
+    const backgroundColor = event.color ?? 'var(--cc-primary-brand)';
     const textStyle =
       event.textOrientation === 'vertical' && currentView != 'month'
         ? { writingMode: 'vertical-rl', textOrientation: 'mixed' }
@@ -128,8 +129,14 @@ export const Calendar = function ({
   return (
     <div
       id={id}
-      style={{ display: styles.visibility ? 'block' : 'none', boxShadow: styles.boxShadow }}
+      style={{
+        display: styles.visibility ? 'block' : 'none',
+        boxShadow: styles.boxShadow,
+        border: `1px solid ${styles.borderColor}`,
+        borderRadius: `${styles.borderRadius}px`,
+      }}
       data-cy={dataCy}
+      className="scrollbar-container"
     >
       <ReactCalendar
         className={`calendar-widget

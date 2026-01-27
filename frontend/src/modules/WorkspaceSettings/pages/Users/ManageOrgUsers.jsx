@@ -4,7 +4,7 @@ import { toast } from 'react-hot-toast';
 // eslint-disable-next-line import/no-unresolved
 import { withTranslation } from 'react-i18next';
 import urlJoin from 'url-join';
-import ErrorBoundary from '@/Editor/ErrorBoundary';
+import ErrorBoundary from '@/_ui/ErrorBoundary';
 import UsersFilter from '@/modules/common/components/UsersTable/components/UsersFilter';
 import UsersTable from '@/modules/common/components/UsersTable';
 import { ButtonSolid } from '@/_ui/AppButton/AppButton';
@@ -14,6 +14,7 @@ import { getQueryParams } from '@/_helpers/routes';
 import HeaderSkeleton from '@/_ui/FolderSkeleton/HeaderSkeleton';
 import EditRoleErrorModal from '@/modules/common/components/ErrorModal';
 import SolidIcon from '@/_ui/Icon/SolidIcons';
+import posthogHelper from '@/modules/common/helpers/posthogHelper';
 
 class ManageOrgUsersComponent extends React.Component {
   constructor(props) {
@@ -180,6 +181,11 @@ class ManageOrgUsersComponent extends React.Component {
           toast.success(res.message, {
             position: 'top-center',
           });
+          posthogHelper.captureEvent('click_upload_users', {
+            workspace_id:
+              authenticationService?.currentUserValue?.organization_id ||
+              authenticationService?.currentSessionValue?.current_organization_id,
+          });
           this.fetchUsers();
           this.fetchUserLimits();
           this.setState({
@@ -293,6 +299,11 @@ class ManageOrgUsersComponent extends React.Component {
       };
       service(currentOrgUserId, isEditing ? updateUserBody : createUserBody)
         .then(() => {
+          posthogHelper.captureEvent('click_invite_users', {
+            workspace_id:
+              authenticationService?.currentUserValue?.organization_id ||
+              authenticationService?.currentSessionValue?.current_organization_id,
+          });
           this.fetchUserLimits();
           toast.success(`User has been ${isEditing ? 'updated' : 'created'}`);
           this.fetchUsers();

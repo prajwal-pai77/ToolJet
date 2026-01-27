@@ -11,7 +11,7 @@ import { User } from '@modules/app/decorators/user.decorator';
 import { User as UserEntity } from '@entities/user.entity';
 import { App as AppEntity } from '@entities/app.entity';
 import { AppDecorator as App } from '@modules/app/decorators/app.decorator';
-import { VersionCreateDto } from './dto';
+import { DraftVersionDto, VersionCreateDto } from './dto';
 import { IVersionController } from './interfaces/IController';
 @InitModule(MODULES.VERSION)
 @Controller('apps')
@@ -25,17 +25,23 @@ export class VersionController implements IVersionController {
     return this.versionService.getAllVersions(app);
   }
 
-  @InitFeature(FEATURE_KEY.CREATE)
+  @InitFeature(FEATURE_KEY.APP_VERSION_CREATE)
   @UseGuards(JwtAuthGuard, ValidAppGuard, FeatureAbilityGuard)
   @Post(':id/versions')
   createVersion(@User() user, @App() app: AppEntity, @Body() versionCreateDto: VersionCreateDto) {
     return this.versionService.createVersion(app, user, versionCreateDto);
   }
 
-  @InitFeature(FEATURE_KEY.DELETE)
+  @InitFeature(FEATURE_KEY.APP_VERSION_DELETE)
   @UseGuards(JwtAuthGuard, ValidAppGuard, FeatureAbilityGuard)
   @Delete(':id/versions/:versionId')
   deleteVersion(@User() user: UserEntity, @App() app: AppEntity) {
     return this.versionService.deleteVersion(app, user);
+  }
+  @InitFeature(FEATURE_KEY.APP_DRAFT_VERSION_CREATE)
+  @UseGuards(JwtAuthGuard, ValidAppGuard, FeatureAbilityGuard)
+  @Post(':id/draft-versions')
+  createDraftVersion(@User() user: UserEntity, @App() app: AppEntity, @Body() draftVersionDto: DraftVersionDto) {
+    return this.versionService.createDraftVersion(app, user, draftVersionDto);
   }
 }

@@ -1,6 +1,5 @@
-import React, { useMemo } from 'react';
-import { HeaderSection } from '@/_ui/LeftSidebar';
-import { LeftSidebarDebugger } from '@/Editor/LeftSidebar/SidebarDebugger/SidebarDebugger';
+import React from 'react';
+import { LeftSidebarDebugger } from './SidebarDebugger/SidebarDebugger';
 import useStore from '@/AppBuilder/_stores/store';
 import { shallow } from 'zustand/shallow';
 
@@ -10,7 +9,7 @@ function Debugger({ pinned, setPinned }) {
     shallow
   );
 
-  const currentPageId = useStore((state) => state.currentPageId);
+  const currentPageId = useStore((state) => state.modules.canvas.currentPageId);
 
   const logsToBeShown = logs.filter((log) => log.page === currentPageId);
 

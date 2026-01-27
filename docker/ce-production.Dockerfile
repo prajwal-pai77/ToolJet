@@ -1,9 +1,9 @@
-FROM node:18.18.2-buster AS builder
+FROM node:22.15.1 AS builder
 
 # Fix for JS heap limit allocation issue
-ENV NODE_OPTIONS="--max-old-space-size=4096"
+ENV NODE_OPTIONS="--max-old-space-size=8096"
 
-RUN npm i -g npm@9.8.1
+RUN npm i -g npm@10.9.2
 RUN mkdir -p /app
 
 WORKDIR /app
@@ -31,10 +31,24 @@ ENV NODE_ENV=production
 COPY ./server/package.json ./server/package-lock.json ./server/
 RUN npm --prefix server install
 COPY ./server/ ./server/
-RUN npm install -g @nestjs/cli 
+RUN npm install -g @nestjs/cli
+RUN npm install -g copyfiles
 RUN npm --prefix server run build
 
-FROM debian:11
+# Install dependencies for PostgREST, curl, tar, etc.
+RUN apt-get update && apt-get install -y \
+    curl ca-certificates tar \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV POSTGREST_VERSION=v12.2.0
+
+RUN curl -Lo postgrest.tar.xz https://github.com/PostgREST/postgrest/releases/download/${POSTGREST_VERSION}/postgrest-v12.2.0-linux-static-x64.tar.xz && \
+    tar -xf postgrest.tar.xz && \
+    mv postgrest /postgrest && \
+    rm postgrest.tar.xz && \
+    chmod +x /postgrest
+
+FROM debian:12
 
 RUN apt-get update -yq \
     && apt-get install curl gnupg zip -yq \
@@ -42,12 +56,12 @@ RUN apt-get update -yq \
     && apt-get clean -y
 
 
-RUN curl -O https://nodejs.org/dist/v18.18.2/node-v18.18.2-linux-x64.tar.xz \
-    && tar -xf node-v18.18.2-linux-x64.tar.xz \
-    && mv node-v18.18.2-linux-x64 /usr/local/lib/nodejs \
+RUN curl -O https://nodejs.org/dist/v22.15.1/node-v22.15.1-linux-x64.tar.xz \
+    && tar -xf node-v22.15.1-linux-x64.tar.xz \
+    && mv node-v22.15.1-linux-x64 /usr/local/lib/nodejs \
     && echo 'export PATH="/usr/local/lib/nodejs/bin:$PATH"' >> /etc/profile.d/nodejs.sh \
     && /bin/bash -c "source /etc/profile.d/nodejs.sh" \
-    && rm node-v18.18.2-linux-x64.tar.xz
+    && rm node-v22.15.1-linux-x64.tar.xz
 ENV PATH=/usr/local/lib/nodejs/bin:$PATH
 
 ENV NODE_ENV=production
@@ -88,11 +102,12 @@ COPY --from=builder /app/frontend/build ./app/frontend/build
 # copy server build
 COPY --from=builder /app/server/package.json ./app/server/package.json
 COPY --from=builder /app/server/.version ./app/server/.version
-COPY --from=builder /app/server/entrypoint.sh ./app/server/entrypoint.sh
 COPY --from=builder /app/server/node_modules ./app/server/node_modules
 COPY --from=builder /app/server/templates ./app/server/templates
 COPY --from=builder /app/server/scripts ./app/server/scripts
 COPY --from=builder /app/server/dist ./app/server/dist
+
+COPY ./docker/ce-entrypoint.sh ./app/server/entrypoint.sh
 
 # Define non-sudo user
 RUN useradd --create-home --home-dir /home/appuser appuser \
@@ -100,6 +115,13 @@ RUN useradd --create-home --home-dir /home/appuser appuser \
     && chown -R appuser:0 /home/appuser \
     && chmod u+x /app \
     && chmod -R g=u /app
+
+# Use the PostgREST binary from the builder stage
+COPY --from=builder --chown=appuser:0 /postgrest /usr/local/bin/postgrest
+
+RUN mv /usr/local/bin/postgrest /usr/local/bin/postgrest-original && \
+    echo '#!/bin/bash\nexec /usr/local/bin/postgrest-original "$@" 2>&1 | sed "s/^/[PostgREST] /"' > /usr/local/bin/postgrest && \
+    chmod +x /usr/local/bin/postgrest
 
 # Set npm cache directory
 ENV npm_config_cache /home/appuser/.npm
@@ -110,6 +132,5 @@ USER appuser
 WORKDIR /app
 # Dependencies for scripts outside nestjs
 RUN npm install dotenv@10.0.0 joi@17.4.1
-
 
 ENTRYPOINT ["./server/entrypoint.sh"]

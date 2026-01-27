@@ -10,21 +10,22 @@ export interface IDataSourcesUtilService {
 
   parseOptionsForCreate(options: Array<object>, resetSecureData?: boolean, manager?: EntityManager): Promise<any>;
 
-  parseOptionsForUpdate(dataSource: DataSource, options: Array<object>, manager: EntityManager): Promise<any>;
+  parseOptionsForUpdate(
+    dataSource: DataSource,
+    options: Array<object>,
+    manager: EntityManager,
+    userId: string
+  ): Promise<any>;
 
   testConnection(testDataSourceDto: TestDataSourceDto, organization_id: string): Promise<object>;
 
   fetchAPITokenFromPlugins(
     dataSource: DataSource,
     code: string,
-    sourceOptions: any
-  ): Promise<
-    Array<{
-      key: string;
-      value: string;
-      encrypted: boolean;
-    }>
-  >;
+    sourceOptions: any,
+    isMultiAuthEnabled: boolean,
+    userId: string
+  ): Promise<Array<{ key: string; value: string; encrypted: boolean }> | Record<string, any>>;
 
   createDataSourceInAllEnvironments(
     organizationId: string,
@@ -32,9 +33,13 @@ export interface IDataSourcesUtilService {
     manager?: EntityManager
   ): Promise<void>;
 
-  parseOptionsForOauthDataSource(options: Array<object>, resetSecureData?: boolean): Promise<Array<object>>;
+  parseOptionsForOauthDataSource(
+    options: Array<object>,
+    resetSecureData?: boolean,
+    userId?: string
+  ): Promise<Array<object>>;
 
-  resolveConstants(value: string, organizationId: string, environmentId: string): Promise<string>;
+  resolveConstants(value: string, organizationId: string, environmentId: string, user?: User): Promise<string>;
 
   resolveKeyValuePair(element: any, organizationId: string, environmentId: string): Promise<any>;
 

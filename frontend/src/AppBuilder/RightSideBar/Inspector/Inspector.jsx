@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Table } from './Components/Table/Table.jsx';
+import { TabsLayout } from './Components/TabComponent';
 import { Chart } from './Components/Chart';
-import { Form } from './Components/Form';
+import Form from './Components/Form/index.js';
 import { renderElement, renderCustomStyles } from './Utils';
 import { toast } from 'react-hot-toast';
 import { validateQueryName, convertToKebabCase, resolveReferences } from '@/_helpers/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { DefaultComponent } from './Components/DefaultComponent';
 import { FilePicker } from './Components/FilePicker';
+import { PhoneInput } from './Components/PhoneInput/PhoneInput.jsx';
+import { CurrencyInput } from './Components/CurrencyInput/CurrencyInput.jsx';
 import { Modal } from './Components/Modal';
 import { ModalV2 } from './Components/ModalV2';
 import { CustomComponent } from './Components/CustomComponent';
@@ -34,11 +37,20 @@ import Inspect from '@/_ui/Icon/solidIcons/Inspect';
 import classNames from 'classnames';
 import { EMPTY_ARRAY } from '@/_stores/editorStore';
 import { Select } from './Components/Select';
+import { Steps } from './Components/Steps.jsx';
 import { deepClone } from '@/_helpers/utilities/utils.helpers';
 import useStore from '@/AppBuilder/_stores/store';
 import { componentTypes } from '@/AppBuilder/WidgetManager/componentTypes';
 import { copyComponents } from '@/AppBuilder/AppCanvas/appCanvasUtils.js';
 import DatetimePickerV2 from './Components/DatetimePickerV2.jsx';
+import { ToolTip } from '@/_components/ToolTip';
+import AppPermissionsModal from '@/modules/Appbuilder/components/AppPermissionsModal';
+import { appPermissionService } from '@/_services';
+import { Chat } from './Components/Chat.jsx';
+import { Tags } from './Components/Tags.jsx';
+import { ModuleContainerInspector, ModuleViewerInspector, ModuleEditorBanner } from '@/modules/Modules/components';
+import { PopoverMenu } from './Components/PopoverMenu/PopoverMenu.jsx';
+import { v4 as uuidv4 } from 'uuid';
 
 const INSPECTOR_HEADER_OPTIONS = [
   {
@@ -57,32 +69,78 @@ const INSPECTOR_HEADER_OPTIONS = [
     icon: <Copy width={16} />,
   },
   {
+    label: 'Component permission',
+    value: 'permission',
+    icon: (
+      <img
+        alt="permission-icon"
+        src="assets/images/icons/editor/left-sidebar/authorization.svg"
+        width="16"
+        height="16"
+      />
+    ),
+    trailingIcon: <SolidIcon width={16} name="enterprisecrown" className="mx-1" />,
+  },
+  {
     label: 'Delete',
     value: 'delete',
     icon: <Trash width={16} fill={'#E54D2E'} />,
   },
 ];
 
-const NEW_REVAMPED_COMPONENTS = [
+export const NEW_REVAMPED_COMPONENTS = [
   'Text',
   'TextInput',
+  'TextArea',
   'PasswordInput',
+  'EmailInput',
+  'PhoneInput',
+  'CurrencyInput',
   'NumberInput',
   'Table',
   'ToggleSwitchV2',
   'Checkbox',
   'DatetimePickerV2',
+  'DatePickerV2',
+  'TimePicker',
+  'DaterangePicker',
   'DropdownV2',
   'MultiselectV2',
   'RadioButtonV2',
+  'TagsInput',
   'Button',
   'Icon',
   'Image',
   'Container',
+  'Divider',
+  'VerticalDivider',
   'ModalV2',
+  'Tabs',
+  'RangeSliderV2',
+  'Link',
+  'Steps',
+  'FilePicker',
+  'Tags',
+  'Chat',
+  'PopoverMenu',
+  'Statistics',
+  'StarRating',
+  'CircularProgressBar',
+  'CustomComponent',
+  'Html',
+  'AudioRecorder',
+  'Camera',
+  'CodeEditor',
+  'Form',
 ];
 
-export const Inspector = ({ componentDefinitionChanged, darkMode, pages, selectedComponentId }) => {
+export const Inspector = ({
+  componentDefinitionChanged,
+  darkMode,
+  pages,
+  selectedComponentId,
+  handleRightSidebarToggle,
+}) => {
   const allComponents = useStore((state) => state.getCurrentPageComponents());
   const setComponentProperty = useStore((state) => state.setComponentProperty, shallow);
   const setComponentName = useStore((state) => state.setComponentName, shallow);
@@ -91,6 +149,12 @@ export const Inspector = ({ componentDefinitionChanged, darkMode, pages, selecte
   const isVersionReleased = useStore((state) => state.isVersionReleased);
   const setWidgetDeleteConfirmation = useStore((state) => state.setWidgetDeleteConfirmation);
   const setComponentToInspect = useStore((state) => state.setComponentToInspect);
+  const hasAppPermissionComponent = useStore((state) => state?.license?.featureAccess?.appPermissionComponent);
+  const showComponentPermissionModal = useStore((state) => state.showComponentPermissionModal);
+  const toggleComponentPermissionModal = useStore((state) => state.toggleComponentPermissionModal);
+  const setComponentPermission = useStore((state) => state.setComponentPermission);
+  const getResolvedValue = useStore((state) => state.getResolvedValue, shallow);
+  const [tabsPropertiesPanelKey, setTabsPropertiesPanelKey] = useState(uuidv4());
   const dataQueries = useDataQueries();
 
   const currentState = useCurrentState();
@@ -104,6 +168,8 @@ export const Inspector = ({ componentDefinitionChanged, darkMode, pages, selecte
     ...allComponents?.[selectedComponentId]?.component,
     definition: allComponents?.[selectedComponentId]?.component.definition,
   };
+
+  const isModuleContainer = componentMeta.component === 'ModuleContainer';
 
   const component = {
     id: selectedComponentId,
@@ -180,6 +246,25 @@ export const Inspector = ({ componentDefinitionChanged, darkMode, pages, selecte
     if (attr) {
       oldValue = allParams[param.name][attr];
       allParams[param.name][attr] = value;
+
+      // When commonBackgroundColor changes for Tabs component, sync to all tab items if dynamic options are disabled
+      if (
+        component.component.component === 'Tabs' &&
+        param.name === 'commonBackgroundColor' &&
+        paramType === 'styles'
+      ) {
+        const useDynamicOptions = getResolvedValue(newDefinition.properties?.useDynamicOptions?.value);
+        if (!useDynamicOptions && newDefinition.properties?.tabItems?.value) {
+          const updatedTabItems = newDefinition.properties.tabItems.value.map((tabItem) => ({
+            ...tabItem,
+            fieldBackgroundColor: { value },
+          }));
+          newDefinition.properties.tabItems.value = updatedTabItems;
+          // // Also update the store for tabItems
+          setComponentProperty(selectedComponentId, 'tabItems', updatedTabItems, 'properties', 'value', false);
+          setTabsPropertiesPanelKey(uuidv4());
+        }
+      }
       const defaultValue = getDefaultValue(value);
       // This is needed to have enable pagination in Table as backward compatible
       // Whenever enable pagination is false, we turn client and server side pagination as false
@@ -202,13 +287,6 @@ export const Inspector = ({ componentDefinitionChanged, darkMode, pages, selecte
       }
       if (param.type === 'select' && defaultValue) {
         allParams[defaultValue.paramName]['value'] = defaultValue.value;
-      }
-      if (param.name === 'secondarySignDisplay') {
-        if (value === 'negative') {
-          newDefinition['styles']['secondaryTextColour']['value'] = '#EE2C4D';
-        } else if (value === 'positive') {
-          newDefinition['styles']['secondaryTextColour']['value'] = '#36AF8B';
-        }
       }
     } else {
       oldValue = allParams[param.name];
@@ -287,13 +365,6 @@ export const Inspector = ({ componentDefinitionChanged, darkMode, pages, selecte
         if (param.type === 'select' && defaultValue) {
           allParams[defaultValue.paramName]['value'] = defaultValue.value;
         }
-        if (param.name === 'secondarySignDisplay') {
-          if (value === 'negative') {
-            newDefinition['styles']['secondaryTextColour']['value'] = '#EE2C4D';
-          } else if (value === 'positive') {
-            newDefinition['styles']['secondaryTextColour']['value'] = '#36AF8B';
-          }
-        }
       } else {
         allParams[param.name] = value;
       }
@@ -363,9 +434,14 @@ export const Inspector = ({ componentDefinitionChanged, darkMode, pages, selecte
     if (value === 'delete') {
       setWidgetDeleteConfirmation(true);
     }
+    if (value === 'permission') {
+      if (!hasAppPermissionComponent) return;
+      toggleComponentPermissionModal(true);
+    }
     if (value === 'duplicate') {
       copyComponents({ isCloning: true });
     }
+    setShowHeaderActionsMenu(false);
   };
   const buildGeneralStyle = () => {
     if (!componentMeta?.definition?.generalStyles) {
@@ -395,9 +471,35 @@ export const Inspector = ({ componentDefinitionChanged, darkMode, pages, selecte
     return <Accordion items={items} />;
   };
 
+  const renderDocumentationLink = () => {
+    return (
+      <span className="widget-documentation-link">
+        <a href={getDocsLink(componentMeta)} target="_blank" rel="noreferrer" data-cy="widget-documentation-link">
+          <span>
+            <Student width={13} fill={'#3E63DD'} />
+            <small className="widget-documentation-link-text">
+              {t('widget.common.documentation', 'Read documentation for {{componentMeta}}', {
+                componentMeta:
+                  componentMeta.displayName === 'Toggle Switch (Legacy)'
+                    ? 'Toggle (Legacy)'
+                    : componentMeta.displayName === 'Toggle Switch'
+                    ? 'Toggle Switch'
+                    : componentMeta.component,
+              })}
+            </small>
+          </span>
+          <span>
+            <ArrowRight width={20} fill={'#3E63DD'} />
+          </span>
+        </a>
+      </span>
+    );
+  };
+
   const propertiesTab = isMounted && (
     <div className={`${shouldFreeze && 'disabled'}`}>
       <GetAccordion
+        tabsPropertiesPanelKey={tabsPropertiesPanelKey}
         componentName={componentMeta.component}
         layoutPropertyChanged={layoutPropertyChanged}
         component={component}
@@ -431,7 +533,7 @@ export const Inspector = ({ componentDefinitionChanged, darkMode, pages, selecte
 
   React.useEffect(() => {
     const handleClickOutside = (event) => {
-      if (showHeaderActionsMenu && event.target.closest('.list-menu') === null) {
+      if (showHeaderActionsMenu && event.target.closest('#list-menu') === null) {
         setShowHeaderActionsMenu(false);
       }
     };
@@ -443,102 +545,138 @@ export const Inspector = ({ componentDefinitionChanged, darkMode, pages, selecte
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify({ showHeaderActionsMenu })]);
 
+  const toggleRightSidebarPin = useStore((state) => state.toggleRightSidebarPin);
+  const isRightSidebarPinned = useStore((state) => state.isRightSidebarPinned);
+  const renderAppNameInput = () => {
+    if (isModuleContainer) {
+      return <ModuleEditorBanner title="Module Container" customStyles={{ height: 28, width: 150, marginTop: 3 }} />;
+    }
+
+    return (
+      <div className="input-icon">
+        <input
+          onChange={(e) => setNewComponentName(e.target.value)}
+          type="text"
+          onBlur={() => handleComponentNameChange(newComponentName)}
+          className="w-100 inspector-edit-widget-name"
+          value={newComponentName}
+          ref={inputRef}
+          data-cy="edit-widget-name"
+        />
+      </div>
+    );
+  };
+
+  const renderTabs = () => (
+    <Tabs defaultActiveKey={'properties'} id="inspector" hidden={isModuleContainer}>
+      <Tab eventKey="properties" title="Properties">
+        {propertiesTab}
+      </Tab>
+      <Tab eventKey="styles" title="Styles">
+        {stylesTab}
+      </Tab>
+    </Tabs>
+  );
+
   return (
-    <div className="inspector">
+    <div className={`inspector ${isModuleContainer && 'module-editor-inspector'}`}>
       <div>
-        <div className={`row inspector-component-title-input-holder ${shouldFreeze && 'disabled'}`}>
-          <div className="col-1" onClick={() => clearSelectedComponents()}>
-            <span
-              data-cy={`inspector-close-icon`}
-              className="cursor-pointer d-flex align-items-center "
-              style={{ height: '28px', width: '28px' }}
-            >
-              <ArrowLeft fill={'var(--slate12)'} width={'14'} />
-            </span>
-          </div>
-          <div className={`col-9 p-0 ${shouldFreeze && 'disabled'}`}>
-            <div className="input-icon" style={{ marginLeft: '8px' }}>
-              <input
-                onChange={(e) => setNewComponentName(e.target.value)}
-                type="text"
-                onBlur={() => handleComponentNameChange(newComponentName)}
-                className="w-100 inspector-edit-widget-name"
-                value={newComponentName}
-                ref={inputRef}
-                data-cy="edit-widget-name"
+        <div
+          className={`flex-row d-flex align-items-center inspector-component-title-input-holder inspector-action-container ${
+            shouldFreeze && 'disabled'
+          }`}
+        >
+          <div className={`flex-grow-1 p-0 ${shouldFreeze && 'disabled'}`}>{renderAppNameInput()}</div>
+          {!isModuleContainer && (
+            <>
+              <div className="width-unset" data-cy={'component-inspector-options'}>
+                <OverlayTrigger
+                  trigger={'click'}
+                  placement={'bottom-end'}
+                  rootClose={false}
+                  show={showHeaderActionsMenu}
+                  overlay={
+                    <Popover
+                      id="list-menu"
+                      className={classNames({ 'dark-theme': darkMode }, 'inspector-header-actions-menu')}
+                    >
+                      <Popover.Body bsPrefix="list-item-popover-body">
+                        {INSPECTOR_HEADER_OPTIONS.map((option) => {
+                          const optionBody = (
+                            <div
+                              data-cy={`component-inspector-${String(option?.value).toLowerCase()}-button`}
+                              className="list-item-popover-option"
+                              key={option?.value}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleInspectorHeaderActions(option.value);
+                              }}
+                            >
+                              <div className="list-item-popover-menu-option-icon">{option.icon}</div>
+                              <div
+                                className={classNames('list-item-option-menu-label', {
+                                  'color-tomato9': option.value === 'delete',
+                                  'color-disabled': option.value === 'permission' && !hasAppPermissionComponent,
+                                })}
+                              >
+                                {option?.label}
+                              </div>
+                              {option.value === 'permission' &&
+                                !hasAppPermissionComponent &&
+                                option.trailingIcon &&
+                                option.trailingIcon}
+                            </div>
+                          );
+
+                          return option.value === 'permission' ? (
+                            <ToolTip
+                              key={option.value}
+                              message={
+                                "You don't have access to component permissions. Upgrade your plan to access this feature."
+                              }
+                              placement="left"
+                              show={!hasAppPermissionComponent}
+                            >
+                              {optionBody}
+                            </ToolTip>
+                          ) : (
+                            optionBody
+                          );
+                        })}
+                      </Popover.Body>
+                    </Popover>
+                  }
+                >
+                  <span className="cursor-pointer" onClick={() => setShowHeaderActionsMenu(true)}>
+                    <SolidIcon data-cy={'menu-icon'} name="morevertical" width="24" fill={'var(--slate12)'} />
+                  </span>
+                </OverlayTrigger>
+              </div>
+              <AppPermissionsModal
+                modalType="component"
+                resourceId={selectedComponentId}
+                resourceName={allComponents[selectedComponentId]?.component?.name}
+                showModal={showComponentPermissionModal}
+                toggleModal={toggleComponentPermissionModal}
+                darkMode={darkMode}
+                fetchPermission={(id, appId) => appPermissionService.getComponentPermission(appId, id)}
+                createPermission={(id, appId, body) => appPermissionService.createComponentPermission(appId, id, body)}
+                updatePermission={(id, appId, body) => appPermissionService.updateComponentPermission(appId, id, body)}
+                deletePermission={(id, appId) => appPermissionService.deleteComponentPermission(appId, id)}
+                onSuccess={(data) => setComponentPermission(selectedComponentId, data)}
               />
-            </div>
-          </div>
-          <div className="col-2" data-cy={'component-inspector-options'}>
-            <OverlayTrigger
-              trigger={'click'}
-              placement={'bottom-end'}
-              rootClose={false}
-              show={showHeaderActionsMenu}
-              overlay={
-                <Popover id="list-menu" className={darkMode && 'dark-theme'}>
-                  <Popover.Body bsPrefix="list-item-popover-body">
-                    {INSPECTOR_HEADER_OPTIONS.map((option) => (
-                      <div
-                        data-cy={`component-inspector-${String(option?.value).toLowerCase()}-button`}
-                        className="list-item-popover-option"
-                        key={option?.value}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleInspectorHeaderActions(option.value);
-                        }}
-                      >
-                        <div className="list-item-popover-menu-option-icon">{option.icon}</div>
-                        <div
-                          className={classNames('list-item-option-menu-label', {
-                            'color-tomato9': option.value === 'delete',
-                          })}
-                        >
-                          {option?.label}
-                        </div>
-                      </div>
-                    ))}
-                  </Popover.Body>
-                </Popover>
-              }
-            >
-              <span className="cursor-pointer" onClick={() => setShowHeaderActionsMenu(true)}>
-                <SolidIcon data-cy={'menu-icon'} name="morevertical" width="24" fill={'var(--slate12)'} />
-              </span>
-            </OverlayTrigger>
+            </>
+          )}
+          <div className="icon-btn cursor-pointer flex-shrink-0 p-2 h-4 w-4" onClick={handleRightSidebarToggle}>
+            <SolidIcon fill="var(--icon-strong)" name={'remove03'} width="16" viewBox="0 0 16 16" />
           </div>
         </div>
-        <div className={`${shouldFreeze && 'disabled'}`}>
-          <Tabs defaultActiveKey={'properties'} id="inspector">
-            <Tab eventKey="properties" title="Properties">
-              {propertiesTab}
-            </Tab>
-            <Tab eventKey="styles" title="Styles">
-              {stylesTab}
-            </Tab>
-          </Tabs>
+
+        <div className={`${shouldFreeze && 'disabled'}`} key={selectedComponentId}>
+          {renderTabs()}
         </div>
       </div>
-      <span className="widget-documentation-link">
-        <a href={getDocsLink(componentMeta)} target="_blank" rel="noreferrer" data-cy="widget-documentation-link">
-          <span>
-            <Student width={13} fill={'#3E63DD'} />
-            <small className="widget-documentation-link-text">
-              {t('widget.common.documentation', 'Read documentation for {{componentMeta}}', {
-                componentMeta:
-                  componentMeta.displayName === 'Toggle Switch (Legacy)'
-                    ? 'Toggle (Legacy)'
-                    : componentMeta.displayName === 'Toggle Switch'
-                    ? 'Toggle Switch'
-                    : componentMeta.component,
-              })}
-            </small>
-          </span>
-          <span>
-            <ArrowRight width={20} fill={'#3E63DD'} />
-          </span>
-        </a>
-      </span>
+      {renderDocumentationLink()}
     </div>
   );
 };
@@ -556,6 +694,8 @@ const getDocsLink = (componentMeta) => {
       return 'https://docs.tooljet.com/docs/widgets/multiselect';
     case 'DaterangePicker':
       return 'https://docs.tooljet.com/docs/widgets/date-range-picker';
+    case 'RangeSliderV2':
+      return 'https://docs.tooljet.com/docs/widgets/range-slider';
     default:
       return `https://docs.tooljet.io/docs/widgets/${convertToKebabCase(component)}`;
   }
@@ -694,10 +834,13 @@ const handleRenderingConditionalStyles = (
 };
 
 const GetAccordion = React.memo(
-  ({ componentName, ...restProps }) => {
+  ({ componentName, tabsPropertiesPanelKey, ...restProps }) => {
     switch (componentName) {
       case 'Table':
         return <Table {...restProps} />;
+
+      case 'Tabs':
+        return <TabsLayout {...restProps} key={tabsPropertiesPanelKey} />;
 
       case 'Chart':
         return <Chart {...restProps} />;
@@ -718,18 +861,39 @@ const GetAccordion = React.memo(
         return <Icon {...restProps} />;
 
       case 'Form':
-        return <Form {...restProps} />;
+        return <Form {...restProps} key={restProps.component?.id} />;
 
       case 'DropdownV2':
       case 'MultiselectV2':
       case 'RadioButtonV2':
+      case 'TagsInput':
         return <Select {...restProps} />;
+
+      case 'Tags':
+        return <Tags {...restProps} />;
+
+      case 'Chat':
+        return <Chat {...restProps} />;
 
       case 'DatetimePickerV2':
       case 'DaterangePicker':
       case 'DatePickerV2':
       case 'TimePicker':
         return <DatetimePickerV2 {...restProps} componentName={componentName} />;
+      case 'Steps':
+        return <Steps {...restProps} />;
+      case 'PhoneInput':
+        return <PhoneInput {...restProps} />;
+      case 'CurrencyInput':
+        return <CurrencyInput {...restProps} componentName={componentName} />;
+
+      case 'ModuleContainer':
+        return <ModuleContainerInspector {...restProps} />;
+
+      case 'ModuleViewer':
+        return <ModuleViewerInspector {...restProps} />;
+      case 'PopoverMenu':
+        return <PopoverMenu {...restProps} />;
 
       default: {
         return <DefaultComponent {...restProps} />;

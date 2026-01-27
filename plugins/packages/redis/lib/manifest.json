@@ -25,6 +25,9 @@
         "type": "string",
         "encrypted": true
       },
+      "database": {
+        "type": "string"
+      },
       "ca_cert": {
         "encrypted": true
       },
@@ -58,7 +61,7 @@
   },
   "properties": {
     "tls_certificate": {
-      "label": "TLS Certificate",
+      "label": "TLS certificate",
       "key": "tls_certificate",
       "type": "dropdown-component-flip",
       "description": "Single select dropdown for choosing certificates",
@@ -89,6 +92,12 @@
           "type": "text",
           "description": "Enter port"
         },
+        "database": {
+          "label": "Database",
+          "key": "database",
+          "type": "text",
+          "description": "Enter database name"
+        },
         "username": {
           "label": "Username",
           "key": "username",
@@ -111,7 +120,7 @@
     },
     "ca_certificate": {
       "ca_cert": {
-        "label": "CA Cert",
+        "label": "CA cert",
         "key": "ca_cert",
         "type": "textarea",
         "encrypted": true,
@@ -120,21 +129,21 @@
     },
     "client_certificate": {
       "client_key": {
-        "label": "Client Key",
+        "label": "Client key",
         "key": "client_key",
         "type": "textarea",
         "encrypted": true,
         "description": "Enter client key"
       },
       "client_cert": {
-        "label": "Client Cert",
+        "label": "Client cert",
         "key": "client_cert",
         "type": "textarea",
         "encrypted": true,
         "description": "Enter client certificate"
       },
       "ca_cert": {
-        "label": "CA Cert",
+        "label": "CA cert",
         "key": "ca_cert",
         "type": "textarea",
         "encrypted": true,

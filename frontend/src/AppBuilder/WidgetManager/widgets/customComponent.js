@@ -21,6 +21,28 @@ export const customComponentConfig = {
       type: 'toggle',
       displayName: 'Visibility',
       validation: { schema: { type: 'boolean' }, defaultValue: true },
+      accordian: 'container',
+    },
+    borderColor: {
+      type: 'colorSwatches',
+      displayName: 'Border color',
+      validation: {
+        schema: { type: 'string' },
+        defaultValue: false,
+      },
+      accordian: 'container',
+    },
+    borderRadius: {
+      type: 'numberInput',
+      displayName: 'Border radius',
+      validation: { schema: { type: 'union', schemas: [{ type: 'string' }, { type: 'number' }] }, defaultValue: false },
+      accordian: 'container',
+    },
+    boxShadow: {
+      type: 'boxShadow',
+      displayName: 'Box shadow',
+      validation: { schema: { type: 'string' }, defaultValue: '0px 0px 0px 0px #00000040' },
+      accordian: 'container',
     },
   },
   exposedVariables: {
@@ -60,6 +82,9 @@ export const customComponentConfig = {
     events: [],
     styles: {
       visibility: { value: '{{true}}' },
+      borderRadius: { value: '{{6}}' },
+      borderColor: { value: 'var(--cc-weak-border)' },
+      boxShadow: { value: '0px 0px 0px 0px #00000040' },
     },
   },
 };

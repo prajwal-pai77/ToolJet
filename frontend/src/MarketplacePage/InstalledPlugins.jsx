@@ -1,18 +1,19 @@
 import React from 'react';
 import cx from 'classnames';
-import { pluginsService, marketplaceService } from '@/_services';
+import { pluginsService, marketplaceService, globalDatasourceService } from '@/_services';
 import { toast } from 'react-hot-toast';
 import Spinner from '@/_ui/Spinner';
 import { capitalizeFirstLetter, useTagsByPluginId } from './utils';
 import { ConfirmDialog } from '@/_components';
 import Icon from '@/_ui/Icon/SolidIcons';
 import config from 'config';
+import Modal from '@/HomePage/Modal';
 
 export const InstalledPlugins = () => {
   const [allPlugins, setAllPlugins] = React.useState([]);
   const [installedPlugins, setInstalledPlugins] = React.useState([]);
   const [fetching, setFetching] = React.useState(false);
-  const ENABLE_MARKETPLACE_DEV_MODE = config.ENABLE_MARKETPLACE_DEV_MODE == 'true';
+  const ENABLE_MARKETPLACE_DEV_MODE = window.public_config?.ENABLE_MARKETPLACE_DEV_MODE == 'true';
 
   React.useEffect(() => {
     marketplaceService
@@ -68,7 +69,7 @@ export const InstalledPlugins = () => {
           })}
           {!fetching && installedPlugins?.length === 0 && (
             <div className="empty">
-              <p className="empty-title">No results found</p>
+              <p className="empty-title">No plugins added. Please add a plugin from the Marketplace.</p>
             </div>
           )}
         </div>
@@ -81,6 +82,7 @@ const InstalledPluginCard = ({ plugin, marketplacePlugin, fetchPlugins, isDevMod
   const [updating, setUpdating] = React.useState(false);
   const [isDeleteModalVisible, setDeleteModalVisibility] = React.useState(false);
   const [isDeletingPlugin, setDeletingPlugin] = React.useState(false);
+  const [showDependentQueriesInfo, setShowDependentQueriesInfo] = React.useState(false);
 
   const darkMode = localStorage.getItem('darkMode') === 'true';
   const { id, name, pluginId } = plugin;
@@ -140,21 +142,39 @@ const InstalledPluginCard = ({ plugin, marketplacePlugin, fetchPlugins, isDevMod
     toast.success(`${capitalizeFirstLetter(name)} reloaded`);
   };
 
-  const pluginDeleteMessage = (
-    <>
-      Deleting <strong>{capitalizeFirstLetter(name)}</strong> plugin will result in the permanent removal of all
-      associated datasources and its dataqueries. This action cannot be undone. Are you sure you wish to proceed with
-      the deletion?
-    </>
-  );
+  const getQueriesLinkedToMarketplacePlugin = (plugin) => {
+    globalDatasourceService
+      .getQueriesLinkedToMarketplacePlugin(plugin.id)
+      .then((data) => {
+        if (data?.dependent_queries) {
+          setShowDependentQueriesInfo(true);
+        } else {
+          setDeleteModalVisibility(true);
+        }
+      })
+      .catch(({ error }) => {
+        toast.error(error);
+      });
+  };
+
+  const pluginDeleteMessage = <>Do you want to uninstall?</>;
 
   return (
     <>
+      <Modal
+        title="Dependent queries found!"
+        show={showDependentQueriesInfo}
+        closeModal={() => setShowDependentQueriesInfo(false)}
+      >
+        <div className="mt-3 mb-3">
+          Cannot delete the <b>{plugin?.name}</b> plugin as it is used in the apps
+        </div>
+      </Modal>
       <ConfirmDialog
-        title={'Delete plugin'}
+        title={'Uninstall plugin'}
         show={isDeleteModalVisible}
         message={pluginDeleteMessage}
-        confirmButtonText={'Delete'}
+        confirmButtonText={'Uninstall'}
         confirmButtonLoading={isDeletingPlugin}
         onConfirm={executePluginDeletion}
         onCancel={cancelDeletePlugin}
@@ -165,7 +185,7 @@ const InstalledPluginCard = ({ plugin, marketplacePlugin, fetchPlugins, isDevMod
         }}
       />
       <div key={plugin.id} className="col-sm-6 col-lg-4">
-        <div className="plugins-card">
+        <div className="plugins-card card">
           <div className="card-body card-body-alignment">
             <div className="row align-items-center">
               <div className="col-auto">
@@ -238,7 +258,7 @@ const InstalledPluginCard = ({ plugin, marketplacePlugin, fetchPlugins, isDevMod
                 <div className="col-auto">
                   <div
                     className={cx('cursor-pointer link-primary', { disabled: updating })}
-                    onClick={() => setDeleteModalVisibility(true)}
+                    onClick={() => getQueriesLinkedToMarketplacePlugin(plugin)}
                   >
                     Remove
                   </div>

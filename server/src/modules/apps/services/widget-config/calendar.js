@@ -53,6 +53,22 @@ export const calendarConfig = {
       type: 'code',
       displayName: 'Header date format on week view',
     },
+    borderColor: {
+      type: 'colorSwatches',
+      displayName: 'Border color',
+      validation: {
+        schema: { type: 'string' },
+        defaultValue: 'var(--cc-weak-border)',
+      },
+    },
+    borderRadius: {
+      type: 'numberInput',
+      displayName: 'Border radius',
+      validation: {
+        schema: { type: 'number' },
+        defaultValue: 6,
+      },
+    },
   },
   exposedVariables: {
     selectedEvent: {},
@@ -74,7 +90,7 @@ export const calendarConfig = {
       },
       events: {
         value:
-          "{{[\n\t\t{\n\t\t\t title: 'Sample event',\n\t\t\t start: `${moment().startOf('day').format('MM-DD-YYYY HH:mm:ss A Z')}`,\n\t\t\t end: `${moment().endOf('day').format('MM-DD-YYYY HH:mm:ss A Z')}`,\n\t\t\t allDay: false,\n\t\t\t color: '#4D72DA'\n\t\t}\n]}}",
+          "{{[\n\t\t{\n\t\t\t title: 'Sample event',\n\t\t\t start: `${moment().startOf('day').format('MM-DD-YYYY HH:mm:ss A Z')}`,\n\t\t\t end: `${moment().endOf('day').format('MM-DD-YYYY HH:mm:ss A Z')}`,\n\t\t\t allDay: false\n\t\t}\n]}}",
       },
       resources: {
         value: '{{[]}}',
@@ -106,6 +122,8 @@ export const calendarConfig = {
       visibility: { value: '{{true}}' },
       cellSizeInViewsClassifiedByResource: { value: 'spacious' },
       weekDateFormat: { value: 'DD MMM' },
+      borderColor: { value: 'var(--cc-weak-border)' },
+      borderRadius: { value: 6 },
     },
   },
 };

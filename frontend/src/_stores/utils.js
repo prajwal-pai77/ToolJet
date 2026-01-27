@@ -2,22 +2,15 @@ import { create as _create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 // eslint-disable-next-line import/no-unresolved
 import { diff } from 'deep-object-diff';
-import { componentTypes } from '@/Editor/WidgetManager/components';
+import { componentTypes } from '@/AppBuilder/WidgetManager';
 import _ from 'lodash';
 import { deepClone } from '@/_helpers/utilities/utils.helpers';
-import { removeNestedDoubleCurlyBraces } from '@/_helpers/utils';
 import { v4 as uuid } from 'uuid';
 
 export const zustandDevTools = (fn, options = {}) =>
   devtools(fn, { ...options, enabled: process.env.NODE_ENV === 'production' ? false : false });
 
 const resetters = [];
-
-export const defaultWhiteLabellingSettings = {
-  WHITE_LABEL_LOGO: 'https://app.tooljet.com/logo.svg',
-  WHITE_LABEL_TEXT: 'ToolJet',
-  WHITE_LABEL_FAVICON: 'assets/images/logo.svg',
-};
 
 export const create = (fn) => {
   if (fn === undefined) return create;

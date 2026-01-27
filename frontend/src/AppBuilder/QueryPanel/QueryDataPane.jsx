@@ -7,8 +7,9 @@ import Skeleton from 'react-loading-skeleton';
 import { QueryCard } from './QueryCard';
 import Fuse from 'fuse.js';
 import cx from 'classnames';
-import { Tooltip } from 'react-tooltip';
 import FilterandSortPopup from './FilterandSortPopup';
+import { ToolTip } from '@/_components';
+import { Button } from '@/components/ui/Button/Button';
 import { ButtonSolid } from '@/_ui/AppButton/AppButton';
 import Plus from '@/_ui/Icon/solidIcons/Plus';
 import useShowPopover from '@/_hooks/useShowPopover';
@@ -16,6 +17,10 @@ import DataSourceSelect from '../QueryManager/Components/DataSourceSelect';
 import { OverlayTrigger, Popover } from 'react-bootstrap';
 import FolderEmpty from '@/_ui/Icon/solidIcons/FolderEmpty';
 import useStore from '@/AppBuilder/_stores/store';
+import AppPermissionsModal from '@/modules/Appbuilder/components/AppPermissionsModal';
+import { shallow } from 'zustand/shallow';
+import { appPermissionService } from '@/_services';
+import QueryCardMenu from './QueryCardMenu';
 
 export const QueryDataPane = ({ darkMode }) => {
   const { t } = useTranslation();
@@ -34,6 +39,13 @@ export const QueryDataPane = ({ darkMode }) => {
   function isDataSourceLocal(dataQuery) {
     return dataSources.some((dataSource) => dataSource.id === dataQuery.data_source_id);
   }
+  const featureAccess = useStore((state) => state?.license?.featureAccess, shallow);
+  const licenseValid = !featureAccess?.licenseStatus?.isExpired && featureAccess?.licenseStatus?.isLicenseValid;
+  const selectedQuery = useStore((state) => state.queryPanel.selectedQuery);
+  const showQueryPermissionModal = useStore((state) => state.queryPanel.showQueryPermissionModal);
+  const toggleQueryPermissionModal = useStore((state) => state.queryPanel.toggleQueryPermissionModal);
+  const setQueries = useStore((state) => state.dataQuery.setQueries);
+  const isFreezed = useStore((state) => state.getShouldFreeze());
 
   useEffect(() => {
     setQueryPanelSearchTerm(searchTermForFilters);
@@ -100,21 +112,24 @@ export const QueryDataPane = ({ darkMode }) => {
               clearSelectedDataSources={() => setDataSourcesForFilters([])}
               darkMode={darkMode}
             />
-            <button
-              onClick={() => {
-                showSearchBox && setSearchTermForFilters('');
-                setShowSearchBox((showSearchBox) => !showSearchBox);
-              }}
-              className={cx('btn-query-panel-header', {
-                active: showSearchBox,
-              })}
-              data-tooltip-id="tooltip-for-query-panel-header-btn"
-              data-tooltip-content="Open quick search"
-              data-cy="query-search-button"
-            >
-              <Search width="14" height="14" fill="var(--icons-default)" />
-            </button>
-            <Tooltip id="tooltip-for-query-panel-header-btn" className="tooltip" />
+
+            <ToolTip message="Open quick search" placement="bottom">
+              <Button
+                isLucid
+                iconOnly
+                size="medium"
+                variant="ghost"
+                leadingIcon="search"
+                onClick={() => {
+                  showSearchBox && setSearchTermForFilters('');
+                  setShowSearchBox((showSearchBox) => !showSearchBox);
+                }}
+                className={cx({ 'tw-bg-button-outline-pressed': showSearchBox })}
+                data-tooltip-id="tooltip-for-query-panel-header-btn"
+                data-tooltip-content="Open quick search"
+                data-cy="query-search-button"
+              />
+            </ToolTip>
           </div>
           <AddDataSourceButton darkMode={darkMode} />
         </div>
@@ -162,8 +177,7 @@ export const QueryDataPane = ({ darkMode }) => {
           </div>
         ) : (
           <div
-            className={`query-list tj-scrollbar overflow-auto ${
-              filteredQueries.length === 0 ? 'flex-grow-1 align-items-center justify-content-center' : ''
+            className={`query-list tj-scrollbar overflow-auto ${filteredQueries.length === 0 ? 'flex-grow-1 align-items-center justify-content-center' : ''
             }`}
           >
             <div>
@@ -171,20 +185,34 @@ export const QueryDataPane = ({ darkMode }) => {
               {filteredQueries.map((query) => (
                 <QueryCard key={query.id} dataQuery={query} darkMode={darkMode} localDs={!!isDataSourceLocal(query)} />
               ))}
+              {!isFreezed && <QueryCardMenu darkMode={darkMode} />}
+              {licenseValid && (
+                <AppPermissionsModal
+                  modalType="query"
+                  resourceId={selectedQuery?.id}
+                  resourceName={selectedQuery?.name}
+                  showModal={showQueryPermissionModal}
+                  toggleModal={toggleQueryPermissionModal}
+                  darkMode={darkMode}
+                  fetchPermission={(id, appId) => appPermissionService.getQueryPermission(appId, id)}
+                  createPermission={(id, appId, body) => appPermissionService.createQueryPermission(appId, id, body)}
+                  updatePermission={(id, appId, body) => appPermissionService.updateQueryPermission(appId, id, body)}
+                  deletePermission={(id, appId) => appPermissionService.deleteQueryPermission(appId, id)}
+                  onSuccess={(data) => {
+                    const updatedDataQueries = dataQueries.map((query) => {
+                      if (query.id === selectedQuery.id) {
+                        return {
+                          ...query,
+                          permissions: data.length === 0 || data.length === undefined ? [] : [data[0]],
+                        };
+                      }
+                      return query;
+                    });
+                    setQueries(updatedDataQueries);
+                  }}
+                />
+              )}
             </div>
-            <Tooltip
-              id="query-card-name-tooltip"
-              className="tooltip query-manager-tooltip"
-              disableTooltip={(anchor) => {
-                const { offsetWidth } = anchor;
-                // enable tooltip if the query name is too long
-                if (anchor?.getAttribute('data-tooltip-dynamic') && offsetWidth <= 150) {
-                  return true;
-                }
-
-                return false;
-              }}
-            />
             {filteredQueries.length === 0 && (
               <div className=" d-flex  flex-column align-items-center justify-content-start">
                 {filteredQueries.length === 0 ? <EmptyDataSource /> : ''}
@@ -251,9 +279,12 @@ const AddDataSourceButton = ({ darkMode, disabled: _disabled }) => {
       }
     >
       <span className="col-auto" id="query-add-ds-popover-btn">
-        <ButtonSolid
-          size="sm"
-          variant="tertiary"
+        <Button
+          isLucid
+          iconOnly
+          size="medium"
+          variant="outline"
+          leadingIcon="plus"
           disabled={disabled}
           onClick={(e) => {
             e.stopPropagation();
@@ -262,11 +293,8 @@ const AddDataSourceButton = ({ darkMode, disabled: _disabled }) => {
             }
             setShowMenu((show) => !show);
           }}
-          style={{ height: '28px', width: '28px', padding: '0px' }}
           data-cy={`show-ds-popover-button`}
-        >
-          <Plus style={{ height: '14px' }} fill="var(--icons-strong)" />
-        </ButtonSolid>
+        />
       </span>
     </OverlayTrigger>
   );

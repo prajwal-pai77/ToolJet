@@ -3,8 +3,10 @@ import { dbTransactionWrap } from '@helpers/database.helper';
 import { catchDbException } from '@helpers/utils.helper';
 import { Injectable } from '@nestjs/common';
 import {
+  Brackets,
   DataSource,
   EntityManager,
+  Equal,
   FindManyOptions,
   FindOptionsWhere,
   ILike,
@@ -28,7 +30,7 @@ export class GroupPermissionsRepository extends Repository<GroupPermissions> {
 
   getGroup(options: FindOptionsWhere<GroupPermissions>, manager?: EntityManager): Promise<GroupPermissions> {
     return dbTransactionWrap(async (manager: EntityManager) => {
-      return manager.findOne(GroupPermissions, { where: options });
+      return await manager.findOne(GroupPermissions, { where: options });
     }, manager || this.manager);
   }
 
@@ -51,6 +53,38 @@ export class GroupPermissionsRepository extends Repository<GroupPermissions> {
         },
       });
     }, manager || this.manager);
+  }
+
+  async getAllUserGroupsAndRoles(
+    userId: string,
+    appId: string,
+    organizationId: string,
+    manager?: EntityManager
+  ): Promise<GroupPermissions[]> {
+    return dbTransactionWrap(async (manager: EntityManager) => {
+      return manager
+        .createQueryBuilder(GroupPermissions, 'group')
+        .innerJoin('granular_permissions', 'gp', 'gp.group_id = group.id')
+        .innerJoin('apps_group_permissions', 'agp', "agp.granular_permission_id = gp.id AND agp.app_type = 'front-end'")
+        .leftJoin('group_apps', 'ga', 'ga.apps_group_permissions_id = agp.id')
+        .leftJoin('group_users', 'gu', 'gu.group_id = group.id')
+        .where('group.organization_id = :organizationId', { organizationId })
+        .andWhere('gu.user_id = :userId', { userId })
+        .andWhere(
+          new Brackets((qb) => {
+            qb.where('agp.can_view = true').orWhere('agp.can_edit = true');
+          })
+        )
+        .andWhere(
+          new Brackets((qb) => {
+            qb.where('gp.is_all = true').orWhere('gp.is_all = false AND ga.app_id = :appId', { appId });
+          })
+        )
+        .select(['group.id AS id'])
+        .groupBy('group.id')
+        .distinct(true)
+        .getRawMany();
+    }, manager);
   }
 
   async createGroup(
@@ -94,8 +128,19 @@ export class GroupPermissionsRepository extends Repository<GroupPermissions> {
         },
       };
 
+      // Only apply the data source filter if filterDataSource is true
+      if (searchParam?.filterDataSource) {
+        findOptions.where = {
+          ...findOptions.where,
+          type: Not(Equal(ResourceType.DATA_SOURCE)),
+        };
+      }
+
       if (groupId) {
-        findOptions.where = { groupId };
+        findOptions.where = {
+          ...findOptions.where,
+          groupId,
+        };
       }
 
       if (name) {
@@ -165,6 +210,7 @@ export class GroupPermissionsRepository extends Repository<GroupPermissions> {
       // If there's a search input, use multiple find operations and merge results
       if (searchInput) {
         const searchLower = searchInput.toLowerCase();
+        const [firstName, lastName] = searchLower.split(' ');
         return manager.find(GroupUsers, {
           where: [
             {
@@ -188,6 +234,18 @@ export class GroupPermissionsRepository extends Repository<GroupPermissions> {
                 lastName: ILike(`%${searchLower}%`),
               },
             },
+            ...(lastName
+           ? [
+               {
+                 ...baseWhere,
+                 user: {
+                   ...baseWhere.user,
+                   firstName: ILike(`%${firstName}%`),
+                   lastName: ILike(`%${lastName}%`),
+                 },
+               },
+             ]
+           : []),
           ],
           relations: {
             group: true,
@@ -230,7 +288,7 @@ export class GroupPermissionsRepository extends Repository<GroupPermissions> {
     searchInput?: string,
     manager?: EntityManager
   ): Promise<User[]> {
-    const existingUsers = await this.getUsersInGroup(groupId, organizationId, GROUP_PERMISSIONS_TYPE.CUSTOM_GROUP);
+    const existingUsers = await this.getUsersInGroup(groupId, organizationId, null, manager);
 
     const baseWhere = {
       status: Not(USER_STATUS.ARCHIVED),
@@ -249,7 +307,8 @@ export class GroupPermissionsRepository extends Repository<GroupPermissions> {
 
     return dbTransactionWrap((manager: EntityManager) => {
       if (searchInput) {
-        const searchLower = searchInput.toLowerCase();
+        const searchLower = searchInput.toLowerCase().trim();
+        const [firstName, lastName] = searchLower.split(/\s+/);
         return manager.find(User, {
           select: {
             id: true,
@@ -276,6 +335,15 @@ export class GroupPermissionsRepository extends Repository<GroupPermissions> {
               ...baseWhere,
               lastName: ILike(`%${searchLower}%`),
             },
+            ...(lastName
+              ? [
+                  {
+                    ...baseWhere,
+                    firstName: ILike(`%${firstName}%`),
+                    lastName: ILike(`%${lastName}%`),
+                  },
+                ]
+              : []),
           ],
           order: {
             createdAt: 'DESC',
@@ -328,6 +396,22 @@ export class GroupPermissionsRepository extends Repository<GroupPermissions> {
           groupUsersToDelete.map((gp) => gp.groupUsers[0].id)
         );
       }
+    }, manager || this.manager);
+  }
+
+  async getAdminUserForOrg(organizationId: string, manager?: EntityManager): Promise<User | null> {
+    return dbTransactionWrap(async (manager: EntityManager) => {
+      const result = await manager
+        .createQueryBuilder(User, 'user')
+        .innerJoin('user.userGroups', 'groupUser')
+        .innerJoin('groupUser.group', 'group')
+        .where('group.name = :name', { name: 'admin' })
+        .andWhere('group.organizationId = :organizationId', { organizationId })
+        .andWhere('user.status != :archived', { archived: USER_STATUS.ARCHIVED })
+        .limit(1)
+        .getOne();
+
+      return result ?? null;
     }, manager || this.manager);
   }
 }

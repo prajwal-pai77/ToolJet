@@ -12,13 +12,16 @@ import { UserSessions } from 'src/entities/user_sessions.entity';
 import { Response } from 'express';
 import { User } from 'src/entities/user.entity';
 import { Organization } from '@entities/organization.entity';
-import { UserRepository } from '@modules/users/repository';
+import { UserRepository } from '@modules/users/repositories/repository';
 import { SessionUtilService } from './util.service';
 import { AppsRepository } from '@modules/apps/repository';
 import { OrganizationRepository } from '@modules/organizations/repository';
 import { OrganizationUsersRepository } from '@modules/organization-users/repository';
 import { fullName, generateOrgInviteURL, isSuperAdmin } from '@helpers/utils.helper';
 import { decamelizeKeys } from 'humps';
+import { RequestContext } from '@modules/request-context/service';
+import { AUDIT_LOGS_REQUEST_CONTEXT_KEY } from '@modules/app/constants';
+import { decrementActiveSessions, decrementConcurrentUsers } from '@otel/tracing';
 
 @Injectable()
 export class SessionService {
@@ -30,14 +33,39 @@ export class SessionService {
     protected readonly organizationUserRepository: OrganizationUsersRepository
   ) {}
 
-  async terminateSession(userId: string, sessionId: string, response: Response): Promise<void> {
+  async terminateSession(user: User, sessionId: string, response: Response): Promise<void> {
     response.clearCookie('tj_auth_token');
     await dbTransactionWrap(async (manager: EntityManager) => {
-      await manager.delete(UserSessions, { id: sessionId, userId });
+      await manager.delete(UserSessions, { id: sessionId, userId: user.id });
+
+      // Decrement metrics
+      try {
+        decrementActiveSessions({
+          userId: user.id,
+          sessionType: 'user',
+        });
+
+        if (user?.organizationId) {
+          decrementConcurrentUsers({
+            workspaceId: user.organizationId,
+            userId: user.id,
+          });
+        }
+      } catch (error) {
+        console.error('Error decrementing session metrics:', error);
+      }
+
+      const auditLogData = {
+        userId: user.id,
+        organizationId: user.organizationId,
+        resourceId: user.id,
+        resourceName: user.email,
+      };
+      RequestContext.setLocals(AUDIT_LOGS_REQUEST_CONTEXT_KEY, auditLogData);
     });
   }
 
-  async getSessionDetails(user: User, workspaceSlug: string, appId: string): Promise<any> {
+  async getSessionDetails(user: User, workspaceSlug: string, appId: string, aiCookies: any): Promise<any> {
     let appData: { organizationId: string; isPublic: boolean; isReleased: boolean };
     let currentOrganization: Organization;
     if (appId) {
@@ -72,7 +100,7 @@ export class SessionService {
         await this.userRepository.updateOne(user.id, { defaultOrganizationId: appData.organizationId });
       }
     }
-    return await this.sessionUtilService.generateSessionPayload(user, currentOrganization, appData);
+    return await this.sessionUtilService.generateSessionPayload(user, currentOrganization, appData, aiCookies);
   }
 
   async validateInvitedUserSession(user: User, invitedUser: any, tokens: any) {

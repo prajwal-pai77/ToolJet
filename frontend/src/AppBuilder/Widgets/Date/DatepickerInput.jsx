@@ -26,6 +26,11 @@ export const DatepickerInput = forwardRef(
     visibility,
     errTextColor,
     direction,
+    isMandatory,
+    inputId,
+    auto,
+    labelWidth,
+    label,
   }) => {
     return (
       <>
@@ -40,7 +45,14 @@ export const DatepickerInput = forwardRef(
             setTextInputFocus(false);
             setShowValidationError(true);
           }}
+          aria-hidden={!visibility}
+          aria-disabled={disable || loading}
+          aria-busy={loading}
+          aria-required={isMandatory}
+          aria-invalid={!isValid && showValidationError}
+          aria-label={!auto && labelWidth == 0 && label?.length != 0 ? label : undefined}
           ref={dateInputRef}
+          id={`component-${inputId}`}
           style={inputStyles}
           onChange={(e) => {
             const inputVal = e.target.value;
@@ -59,7 +71,7 @@ export const DatepickerInput = forwardRef(
               }
             }
           }}
-          disabled={disable || loading}
+          // disabled={disable || loading}
         />
         <span className="cell-icon-display">
           <IconElement style={iconStyles} width="16" className="table-column-datepicker-input-icon" />

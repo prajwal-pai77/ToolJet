@@ -22,6 +22,7 @@ import { dropdownConfig } from './dropdown';
 import { dropdownV2Config } from './dropdownV2';
 import { multiselectConfig } from './multiselect';
 import { multiselectV2Config } from './multiselectV2';
+import { tagsInputConfig } from './TagsInput';
 import { richtextareaConfig } from './richtextarea';
 import { mapConfig } from './map';
 import { qrscannerConfig } from './qrscanner';
@@ -58,6 +59,16 @@ import { kanbanBoardConfig } from './kanbanBoard';
 import { datetimePickerV2Config } from './datetimepickerV2';
 import { datePickerV2Config } from './datepickerV2';
 import { timePickerConfig } from './timepicker';
+import { moduleContainerConfig } from './moduleContainer';
+import { moduleViewerConfig } from './moduleViewer';
+import { emailinputConfig } from './emailinput';
+import { phoneinputConfig } from './phoneinput';
+import { currencyinputConfig } from './currencyinput';
+import { rangeSliderV2Config } from './rangesliderV2';
+import { chatConfig } from './chat';
+import { popoverMenuConfig } from './popoverMenu';
+import { audioRecorderConfig } from './audioRecorder';
+import { cameraConfig } from './camera';
 
 const widgets = {
   buttonConfig,
@@ -73,12 +84,15 @@ const widgets = {
   datetimePickerV2Config,
   datePickerV2Config,
   timePickerConfig,
+  emailinputConfig,
+  phoneinputConfig,
+  currencyinputConfig,
   checkboxConfig,
   radiobuttonConfig, //!Depreciated
   radiobuttonV2Config,
   toggleswitchConfig, //!Depreciated
   toggleSwitchV2Config,
-  textareaConfig,
+  textareaConfig, //! Deprecated
   daterangepickerConfig,
   textConfig,
   imageConfig,
@@ -87,6 +101,7 @@ const widgets = {
   dropdownV2Config,
   multiselectConfig,
   multiselectV2Config, //!Depreciated
+  tagsInputConfig,
   richtextareaConfig,
   mapConfig,
   qrscannerConfig,
@@ -105,6 +120,7 @@ const widgets = {
   spinnerConfig,
   statisticsConfig,
   rangeSliderConfig,
+  rangeSliderV2Config,
   timelineConfig,
   svgImageConfig,
   htmlConfig,
@@ -120,6 +136,12 @@ const widgets = {
   linkConfig,
   iconConfig,
   boundedBoxConfig,
+  chatConfig,
+  moduleContainerConfig,
+  moduleViewerConfig,
+  popoverMenuConfig,
+  audioRecorderConfig,
+  cameraConfig,
 };
 
 const universalProps = {

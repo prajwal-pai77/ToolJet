@@ -14,6 +14,7 @@ import {
 import SignupStatusCard from './components/SignupStatusCard';
 import './resources/styles/sign-up-form.styles.scss';
 import SepratorComponent from '@/modules/common/components/SepratorComponent';
+import { checkWhiteLabelsDefaultState } from '@white-label/whiteLabelling';
 
 const SignupForm = ({
   configs,
@@ -25,8 +26,8 @@ const SignupForm = ({
   onSubmit,
   setSignupOrganizationDetails,
   initialData,
-  defaultState,
 }) => {
+  const defaultState = checkWhiteLabelsDefaultState();
   const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -56,6 +57,7 @@ const SignupForm = ({
     email: setisDefaultFormEmail,
     password: setisDefaultFormPassword,
   };
+
   useEffect(() => {
     if (initialData) {
       setFormData({ ...initialData, password: '' });
@@ -142,12 +144,12 @@ const SignupForm = ({
     if (!validateEmail(formData.email)) {
       newErrors.email = 'Invalid email';
     }
-    if (formData.password.length < 5) {
-      newErrors.password = 'Password must be at least 5 characters long';
-    }
-    if (formData.password.length > 100) {
-      newErrors.password = 'Password can be at max 100 characters long';
-    }
+    // if (formData.password.length < 5) {
+    //   newErrors.password = 'Password must be at least 5 characters long';
+    // }
+    // if (formData.password.length > 100) {
+    //   newErrors.password = 'Password can be at max 100 characters long';
+    // }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -161,7 +163,11 @@ const SignupForm = ({
             <p className="signup-info" data-cy="signup-info">
               {organizationId && (
                 <>
-                  Sign up to the workspace - <span className="workspace-name">{configs?.name}</span>.
+                  Sign up to the workspace -{' '}
+                  <span className="workspace-name" data-cy="workspace-name">
+                    {configs?.name}
+                  </span>
+                  .
                 </>
               )}{' '}
               {shouldShowSignInCTA && (

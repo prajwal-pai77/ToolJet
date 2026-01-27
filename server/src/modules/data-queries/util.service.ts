@@ -16,6 +16,10 @@ import { PluginsServiceSelector } from '@modules/data-sources/services/plugin-se
 import { IDataQueriesUtilService } from './interfaces/IUtilService';
 import { RequestContext } from '@modules/request-context/service';
 import { DataQueryStatus } from './services/status.service';
+import { AUDIT_LOGS_REQUEST_CONTEXT_KEY } from '@modules/app/constants';
+import { getQueryVariables } from 'lib/utils';
+import { DataQueryExecutionOptions } from './interfaces/IUtilService';
+import { AbortControllerHandler } from '@helpers/abortqueryhandler.helper';
 
 @Injectable()
 export class DataQueriesUtilService implements IDataQueriesUtilService {
@@ -62,26 +66,32 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
     dataQuery: any,
     queryOptions: object,
     response: Response,
-    environmentId?: string
+    envId?: string,
+    mode?: string,
+    app?: App,
+    opts?: DataQueryExecutionOptions
   ): Promise<object> {
     let result;
     const queryStatus = new DataQueryStatus();
     const forwardRestCookies = this.configService.get<string>('FORWARD_RESTAPI_COOKIES') === 'true';
+    let abortCtrl = null;
+
+    // Hoist these variables to function scope for access in finally block
+    let dataSource: DataSource;
+    let appToUse: App;
 
     try {
-      const dataSource: DataSource = dataQuery?.dataSource;
-
-      const app: App = dataQuery?.app;
-      if (!(dataSource && app)) {
+      dataSource = dataQuery?.dataSource;
+      // Use passed app parameter first, fallback to dataQuery.app (which may be undefined)
+      appToUse = app || dataQuery?.app;
+      if (!(dataSource && appToUse)) {
         throw new UnauthorizedException();
       }
-      const organizationId = user ? user.organizationId : app.organizationId;
+      const organizationId = user ? user.organizationId : appToUse.organizationId;
 
-      const dataSourceOptions = await this.appEnvironmentUtilService.getOptions(
-        dataSource.id,
-        organizationId,
-        environmentId
-      );
+      const dataSourceOptions = await this.appEnvironmentUtilService.getOptions(dataSource.id, organizationId, envId);
+      const environmentId = dataSourceOptions.environmentId;
+
       dataSource.options = dataSourceOptions.options;
 
       let { sourceOptions, parsedQueryOptions, service } = await this.fetchServiceAndParsedParams(
@@ -89,14 +99,26 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
         dataQuery,
         queryOptions,
         organizationId,
-        environmentId
+        environmentId,
+        user,
+        opts
       );
+
+      // Determine whether query timeout is set, to initiate abort controller
+      const queryTimeoutMs =
+        typeof parsedQueryOptions['query_timeout'] === 'string' && parsedQueryOptions['query_timeout'].trim() === ''
+          ? NaN
+          : Number(parsedQueryOptions['query_timeout']);
+      // Only if query timeout is set, abortController will be created
+      abortCtrl = new AbortControllerHandler(queryTimeoutMs);
+      abortCtrl.start();
 
       queryStatus.setOptions(parsedQueryOptions);
 
       try {
+        abortCtrl.throwIfAborted();
         // multi-auth will not work with public apps
-        if (app?.isPublic && sourceOptions['multiple_auth_enabled']) {
+        if (appToUse?.isPublic && sourceOptions['multiple_auth_enabled']) {
           throw new QueryError(
             'Authentication required for all users should be turned off since the app is public',
             '',
@@ -130,9 +152,11 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
           }
         }
 
+        abortCtrl.throwIfAborted();
         queryStatus.setStart();
 
-        result = await service.run(
+        const promises = [];
+        const queryPromise = service.run(
           sourceOptions,
           parsedQueryOptions,
           `${dataSource.id}-${dataSourceOptions.environmentId}`,
@@ -140,13 +164,22 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
           {
             user: { id: user?.id },
             app: {
-              id: app?.id,
-              isPublic: app?.isPublic,
-              ...(dataSource.kind === 'tooljetdb' && { organization_id: app.organizationId }),
+              id: appToUse?.id,
+              isPublic: appToUse?.isPublic,
+              ...(dataSource.kind === 'tooljetdb' && { organization_id: appToUse.organizationId }),
             },
           }
         );
+        promises.push(queryPromise);
+
+        if (abortCtrl.canAbort) {
+          promises.push(abortCtrl.createAbortPromise());
+        }
+        result = await Promise.race(promises);
+        abortCtrl.cleanup();
       } catch (api_error) {
+        // Clear timeout set for Queries, incase of error.
+        abortCtrl.cleanup();
         if (api_error.constructor.name === 'OAuthUnauthorizedClientError') {
           const currentUserToken = sourceOptions['refresh_token']
             ? sourceOptions
@@ -154,13 +187,18 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
                 sourceOptions['multiple_auth_enabled'],
                 sourceOptions['tokenData'],
                 user?.id,
-                app?.isPublic
+                appToUse?.isPublic
               );
           if (currentUserToken && currentUserToken['refresh_token']) {
             console.log('Access token expired. Attempting refresh token flow.');
             let accessTokenDetails;
             try {
-              accessTokenDetails = await service.refreshToken(sourceOptions, dataSource.id, user?.id, app?.isPublic);
+              accessTokenDetails = await service.refreshToken(
+                sourceOptions,
+                dataSource.id,
+                user?.id,
+                appToUse?.isPublic
+              );
             } catch (error) {
               if (error.constructor.name === 'OAuthUnauthorizedClientError') {
                 // unauthorized error need to re-authenticate
@@ -217,19 +255,31 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
               dataQuery,
               queryOptions,
               organizationId,
-              environmentId
+              environmentId,
+              user,
+              opts
             ));
             queryStatus.setOptions(parsedQueryOptions);
-            result = await service.run(
+            abortCtrl.start();
+
+            const promises = [];
+            const queryPromise = service.run(
               sourceOptions,
               parsedQueryOptions,
               `${dataSource.id}-${dataSourceOptions.environmentId}`,
               dataSourceOptions.updatedAt,
               {
                 user: { id: user?.id },
-                app: { id: app?.id, isPublic: app?.isPublic },
+                app: { id: appToUse?.id, isPublic: appToUse?.isPublic },
               }
             );
+            promises.push(queryPromise);
+
+            if (abortCtrl.canAbort) {
+              promises.push(abortCtrl.createAbortPromise());
+            }
+            result = await Promise.race(promises);
+            abortCtrl.cleanup();
           } else if (
             dataSource.kind === 'restapi' ||
             dataSource.kind === 'openapi' ||
@@ -261,14 +311,18 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
           throw api_error;
         }
       }
+      // Final timeout check before marking query success
+      abortCtrl.throwIfAborted();
       queryStatus.setSuccess();
 
       //TODO: support workflow execute method().
       if (forwardRestCookies && dataQuery.kind === 'restapi' && result.responseHeaders) {
         this.setCookiesBackToClient(response, result.responseHeaders);
       }
+
       return result;
     } catch (queryError) {
+      abortCtrl.cleanup();
       queryStatus.setFailure({
         message: queryError?.message,
         description: queryError?.description,
@@ -277,47 +331,107 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
       });
       throw queryError;
     } finally {
+      abortCtrl.cleanup();
       if (user) {
-        // this.eventEmitter.emit('auditLogEntry', {
-        //   userId: user.id,
-        //   organizationId: user.organizationId,
-        //   resourceId: dataQuery?.id,
-        //   resourceName: dataQuery?.name,
-        //   resourceType: ResourceTypes.DATA_QUERY,
-        //   actionType: ActionTypes.DATA_QUERY_RUN,
-        //   metadata: queryStatus.getMetaData(),
-        // });
+        // Get metadata from queryStatus
+        const queryMetadata = queryStatus.getMetaData();
+
+        // Add app and datasource info to metadata for OTEL metrics
+        const enrichedMetadata = {
+          ...queryMetadata,
+          appId: appToUse?.id || 'unknown',
+          appName: appToUse?.name || 'unknown',
+          dataSourceType: dataSource?.kind || 'unknown',
+        };
+
+        const auditData = {
+          userId: user.id,
+          organizationId: user.organizationId,
+          resourceId: dataQuery?.id,
+          resourceName: dataQuery?.name,
+          metadata: enrichedMetadata,
+          resourceData: {
+            dataSourceId: dataSource?.id,
+            dataSourceName: dataSource?.name,
+          },
+        };
+        RequestContext.setLocals(AUDIT_LOGS_REQUEST_CONTEXT_KEY, auditData);
       }
     }
   }
 
-  async fetchServiceAndParsedParams(dataSource, dataQuery, queryOptions, organization_id, environmentId = undefined) {
+  async listTables(user: User, dataSource: DataSource, environmentId: string): Promise<object> {
+    if (!dataSource) {
+      throw new UnauthorizedException();
+    }
+
+    const organizationId = user?.organizationId;
+    const dataSourceOptions = await this.appEnvironmentUtilService.getOptions(
+      dataSource.id,
+      organizationId,
+      environmentId
+    );
+
+    dataSource.options = dataSourceOptions.options;
+
+    const { sourceOptions, service } = await this.fetchServiceAndParsedParams(
+      dataSource,
+      {},
+      {},
+      organizationId,
+      dataSourceOptions.environmentId,
+      user
+    );
+
+    return await service.listTables(
+      sourceOptions,
+      `${dataSource.id}-${dataSourceOptions.environmentId}`,
+      dataSourceOptions.updatedAt
+    );
+  }
+
+  async fetchServiceAndParsedParams(
+    dataSource,
+    dataQuery,
+    queryOptions,
+    organization_id,
+    environmentId = undefined,
+    user = undefined,
+    opts?: DataQueryExecutionOptions
+  ) {
     const sourceOptions = await this.dataSourceUtilService.parseSourceOptions(
       dataSource.options,
       organization_id,
-      environmentId
+      environmentId,
+      user
     );
 
     const parsedQueryOptions = await this.parseQueryOptions(
       dataQuery.options,
       queryOptions,
       organization_id,
-      environmentId
+      environmentId,
+      user,
+      opts
     );
-
     const service = await this.pluginsSelectorService.getService(dataSource.pluginId, dataSource.kind);
 
     return { service, sourceOptions, parsedQueryOptions };
   }
 
-  private getCurrentUserToken = (isMultiAuthEnabled: boolean, tokenData: any, userId: string, isAppPublic: boolean) => {
+  protected getCurrentUserToken = (
+    isMultiAuthEnabled: boolean,
+    tokenData: any,
+    userId: string,
+    isAppPublic: boolean
+  ) => {
     if (isMultiAuthEnabled) {
       if (!tokenData || !Array.isArray(tokenData)) return null;
       return !isAppPublic
         ? tokenData.find((token: any) => token.user_id === userId)
         : userId
-        ? tokenData.find((token: any) => token.user_id === userId)
-        : tokenData[0];
+          ? tokenData.find((token: any) => token.user_id === userId)
+          : tokenData[0];
     } else {
       return tokenData;
     }
@@ -368,7 +482,42 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
     object: any,
     options: object,
     organization_id: string,
-    environmentId?: string
+    environmentId?: string,
+    user?: User,
+    opts?: DataQueryExecutionOptions
+  ): Promise<object> {
+    // If workflow bundle context is available, use the enhanced template resolution
+    if (opts?.workflow?.bundleContent || opts?.workflow?.isolate || opts?.workflow?.context) {
+      // Create an enhanced options object that includes bundle variables
+      const enhancedOptions = { ...options };
+
+      // Get all template variables using the bundle-aware getQueryVariables
+      const templateVariables = getQueryVariables(
+        object,
+        enhancedOptions,
+        () => {}, // addLog function - use empty for data queries
+        opts.workflow.bundleContent,
+        opts.workflow.isolate,
+        opts.workflow.context
+      );
+
+      // Merge template variables back into options for resolution
+      Object.assign(enhancedOptions, templateVariables);
+
+      // Use the standard parseQueryOptions logic but with enhanced options
+      return this.parseQueryOptionsInternal(object, enhancedOptions, organization_id, environmentId, user);
+    }
+
+    // Fallback to original logic for non-bundle contexts
+    return this.parseQueryOptionsInternal(object, options, organization_id, environmentId, user);
+  }
+
+  private async parseQueryOptionsInternal(
+    object: any,
+    options: object,
+    organization_id: string,
+    environmentId?: string,
+    user?: User
   ): Promise<object> {
     const stack: any[] = [{ obj: object, key: null, parent: null }];
 
@@ -406,12 +555,14 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
         // b: Handle {{constants.}} or {{secrets.}}
         if (
           (typeof resolvedValue === 'string' && resolvedValue.includes('{{constants.')) ||
-          resolvedValue.includes('{{secrets.')
+          resolvedValue.includes('{{secrets.') ||
+          resolvedValue.includes('{{globals.server.')
         ) {
           const resolvingConstant = await this.dataSourceUtilService.resolveConstants(
             resolvedValue,
             organization_id,
-            environmentId
+            environmentId,
+            user
           );
           resolvedValue = resolvingConstant;
           if (parent && key !== null) {
@@ -419,16 +570,31 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
           }
         }
 
-        // c: Replace all occurrences of {{ }} variables
+        // d: Simple variable replacement for single {{variable}}
         if (
           typeof resolvedValue === 'string' &&
+          (resolvedValue.match(/^{{{.*}}}$/) || // Triple brace objects - accepts anything between {{{ }}}
+            (resolvedValue.startsWith('{{') &&
+              resolvedValue.endsWith('}}') &&
+              (resolvedValue.match(/{{/g) || [])?.length === 1)) // Single variables
+        ) {
+          resolvedValue = options[resolvedValue];
+          if (parent && key !== null) {
+            parent[key] = resolvedValue;
+          }
+        }
+
+        // c: Replace all occurrences of {{ }} variables
+        else if (
+          typeof resolvedValue === 'string' &&
           resolvedValue?.match(/\{\{(.*?)\}\}/g)?.length > 0 &&
-          !(resolvedValue.startsWith('{{') && resolvedValue.endsWith('}}'))
+          !resolvedValue.match(/^\{\{[^}]*\}\}$/) // Only exclude if entire string is one template variable
         ) {
           const variables = resolvedValue.match(/\{\{(.*?)\}\}/g);
 
           for (const variable of variables || []) {
             let replacement = options[variable];
+
             // Check if the replacement is an object
             if (typeof replacement === 'object' && replacement !== null) {
               // Ensure parent is a non-empty array before attempting to access its first element
@@ -446,19 +612,6 @@ export class DataQueriesUtilService implements IDataQueriesUtilService {
               resolvedValue = resolvedValue.replace(variable, JSON.stringify(replacement));
             }
           }
-          if (parent && key !== null) {
-            parent[key] = resolvedValue;
-          }
-        }
-
-        // d: Simple variable replacement for single {{variable}}
-        if (
-          typeof resolvedValue === 'string' &&
-          resolvedValue.startsWith('{{') &&
-          resolvedValue.endsWith('}}') &&
-          (resolvedValue.match(/{{/g) || [])?.length === 1
-        ) {
-          resolvedValue = options[resolvedValue];
           if (parent && key !== null) {
             parent[key] = resolvedValue;
           }

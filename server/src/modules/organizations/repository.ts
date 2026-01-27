@@ -7,6 +7,7 @@ import { catchDbException, isSuperAdmin } from '@helpers/utils.helper';
 import { ConfigScope, SSOType } from '@entities/sso_config.entity';
 import { WORKSPACE_STATUS, WORKSPACE_USER_STATUS } from '@modules/users/constants/lifecycle';
 import { CONSTRAINTS } from './constants';
+import { OrganizationInputs } from '@modules/setup-organization/types/organization-inputs';
 
 @Injectable()
 export class OrganizationRepository extends Repository<Organization> {
@@ -18,9 +19,13 @@ export class OrganizationRepository extends Repository<Organization> {
     return await this.findOne({ where: { id }, relations: ['ssoConfigs'] });
   }
 
-  async fetchOrganizationWithSSOConfigs(slug: string, statusList?: Array<boolean>): Promise<Organization> {
+  async fetchOrganizationWithSSOConfigs(
+    slug: string,
+    statusList?: Array<boolean>,
+    allowArchivedWorkspace: boolean = false
+  ): Promise<Organization> {
     const conditions: any = {
-      relations: ['ssoConfigs'],
+      relations: ['ssoConfigs', 'ssoConfigs.oidcGroupSyncs'],
       where: {
         ssoConfigs: {
           enabled: statusList ? In(statusList) : In([true, false]),
@@ -33,13 +38,13 @@ export class OrganizationRepository extends Repository<Organization> {
         ...conditions,
         where: { ...conditions.where, slug },
       });
-    } catch (error) {
+    } catch {
       organization = await this.manager.findOneOrFail(Organization, {
         ...conditions,
         where: { ...conditions.where, id: slug },
       });
     }
-    if (organization && organization.status !== WORKSPACE_STATUS.ACTIVE)
+    if (organization && organization.status !== WORKSPACE_STATUS.ACTIVE && !allowArchivedWorkspace)
       throw new BadRequestException('Organization is Archived');
     return organization;
   }
@@ -83,10 +88,10 @@ export class OrganizationRepository extends Repository<Organization> {
       let organization: Organization;
       try {
         organization = await manager.findOneOrFail(Organization, {
-          where: { slug },
+          where: { slug: slug },
           select,
         });
-      } catch (error) {
+      } catch {
         organization = await manager.findOneOrFail(Organization, {
           where: { id: slug },
           select,
@@ -106,7 +111,8 @@ export class OrganizationRepository extends Repository<Organization> {
     }, manager);
   }
 
-  createOne(name: string, slug: string, manager?: EntityManager): Promise<any> {
+  createOne(organizationInputs: OrganizationInputs, manager?: EntityManager): Promise<any> {
+    const { name, slug, isDefault } = organizationInputs;
     return dbTransactionWrap((manager: EntityManager) => {
       return catchDbException(() => {
         return manager.save(
@@ -120,6 +126,7 @@ export class OrganizationRepository extends Repository<Organization> {
             ],
             name,
             slug,
+            isDefault,
             createdAt: new Date(),
             updatedAt: new Date(),
           })
@@ -200,5 +207,28 @@ export class OrganizationRepository extends Repository<Organization> {
         where: { id: orgId },
       });
     });
+  }
+
+  async getDefaultWorkspaceOfInstance(): Promise<Organization> {
+    return dbTransactionWrap(async (manager: EntityManager) => {
+      try {
+        return await manager.findOneOrFail(Organization, {
+          where: { isDefault: true },
+        });
+      } catch {
+        console.error('No default workspace in this instance');
+        return null;
+      }
+    });
+  }
+
+  async changeDefaultWorkspace(organizationId: string, manager?: EntityManager): Promise<void> {
+    return await dbTransactionWrap(async (manager: EntityManager) => {
+      // First, unset any existing default workspace
+      await manager.update(Organization, { isDefault: true }, { isDefault: false });
+
+      // Then set the new default workspace
+      await manager.update(Organization, { id: organizationId }, { isDefault: true });
+    }, manager || this.manager);
   }
 }

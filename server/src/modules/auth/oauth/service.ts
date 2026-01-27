@@ -29,7 +29,7 @@ import { LoginConfigsUtilService } from '@modules/login-configs/util.service';
 import { AuthUtilService } from '@modules/auth/util.service';
 import { LicenseTermsService } from '@modules/licensing/interfaces/IService';
 import { OrganizationUsersUtilService } from '@modules/organization-users/util.service';
-import { UserRepository } from '@modules/users/repository';
+import { UserRepository } from '@modules/users/repositories/repository';
 import { InstanceSettingsUtilService } from '@modules/instance-settings/util.service';
 import { OrganizationRepository } from '@modules/organizations/repository';
 import { OrganizationUsersRepository } from '@modules/organization-users/repository';
@@ -37,7 +37,7 @@ import { LicenseUserService } from '@modules/licensing/services/user.service';
 import { OnboardingUtilService } from '@modules/onboarding/util.service';
 import { SessionUtilService } from '@modules/session/util.service';
 import { SetupOrganizationsUtilService } from '@modules/setup-organization/util.service';
-const uuid = require('uuid');
+import * as uuid from 'uuid';
 
 @Injectable()
 export class OauthService implements IOAuthService {
@@ -87,8 +87,14 @@ export class OauthService implements IOAuthService {
       organization = ssoConfigs?.organization;
     } else if (isInstanceSSOOrganizationLogin) {
       // Instance SSO login from organization login page
-      organization = await this.loginConfigsUtilService.fetchOrganizationDetails(organizationId, [true], false, true);
-      ssoConfigs = organization?.ssoConfigs?.find((conf) => conf.sso === ssoType);
+      organization = await this.loginConfigsUtilService.fetchOrganizationDetails(
+        organizationId,
+        [true, false],
+        false,
+        true
+      );
+      organization.ssoConfigs = this.loginConfigsUtilService.removeDisabledSsoConfigs(organization?.ssoConfigs);
+      ssoConfigs = organization?.ssoConfigs?.find((conf) => conf?.sso === ssoType);
     } else if (isInstanceSSOLogin) {
       // Instance SSO login from common login page
       ssoConfigs = await this.authUtilService.getInstanceSSOConfigsOfType(ssoType);
@@ -174,7 +180,7 @@ export class OauthService implements IOAuthService {
 
           // Not logging in to specific organization, creating new
           const { name, slug } = generateNextNameAndSlug('My workspace');
-          defaultOrganization = await this.setupOrganizationsUtilService.create(name, slug, null, manager);
+          defaultOrganization = await this.setupOrganizationsUtilService.create({ name, slug }, null, manager);
 
           userDetails = await this.userRepository.createOrUpdate(
             {
@@ -191,6 +197,7 @@ export class OauthService implements IOAuthService {
             [USER_ROLE.ADMIN],
             defaultOrganization.id,
             userDetails.id,
+            false,
             manager
           );
 
@@ -220,7 +227,11 @@ export class OauthService implements IOAuthService {
             if (!isInviteRedirect) {
               // no SSO login enabled organization available for user - creating new one
               const { name, slug } = generateNextNameAndSlug('My workspace');
-              organizationDetails = await this.setupOrganizationsUtilService.create(name, slug, null, manager);
+              organizationDetails = await this.setupOrganizationsUtilService.create(
+                { name, slug },
+                userDetails,
+                manager
+              );
               await this.userRepository.updateOne(
                 userDetails.id,
                 { defaultOrganizationId: organizationDetails.id },
@@ -282,9 +293,8 @@ export class OauthService implements IOAuthService {
             signupOrganizationId !== defaultOrganizationId;
           let personalWorkspace: Organization;
           if (shouldActivatePersonalWorkspace) {
-            const defaultOrganizationUser = await this.organizationUsersRepository.getOrganizationUser(
-              defaultOrganizationId
-            );
+            const defaultOrganizationUser =
+              await this.organizationUsersRepository.getOrganizationUser(defaultOrganizationId);
             await this.organizationUsersUtilService.activateOrganization(defaultOrganizationUser, manager);
           }
 

@@ -32,7 +32,7 @@
 }
 
 
-.cm-base-hint-info {
+.cm-base-hint-info, .cm-completionInfo {
     color: var(--text-default, #1B1F24) !important;
     background-color: var(--surfaces-surface-02);
     border: 1px solid var(--borders-disabled-on-white, #E4E7EB) !important;
@@ -41,7 +41,7 @@
     font-weight: 400;
 }
 
-.cm-base-autocomplete {
+.cm-base-autocomplete, .cm-tooltip-autocomplete {
     // height: 300px !important;
     color: var(--text-default, #1B1F24);
     background: var(--slate1) !important;
@@ -220,6 +220,9 @@
         .query-hinter{
             flex-grow: 1;
         }
+        .cm-editor {
+            min-height: 150px !important;
+        }
     }
     .code-editor-query-panel{
         &.show-line-numbers{
@@ -296,8 +299,8 @@
     height: 100%;
 
     .cm-editor {
-        min-height: 300px;
-        height: 300px;
+        // min-height: 300px;
+        // height: 300px;
         max-height: fit-content !important;
 
         .cm-gutters {
@@ -359,11 +362,6 @@
     }
 }
 
-
-
-
-
-
 .cm-scroller {
     overflow-y: auto !important;
     overflow-x: hidden !important;
@@ -387,6 +385,13 @@
     }
 }
 
+.codehinter-popup{
+    .cm-editor{
+        border-radius: 0 0 4px 4px !important;
+        //box-shadow: none !important;
+    }
+}
+
 .rest-api-tab-content {
     .fields-container {
         .rest-api-codehinter-key-field {
@@ -398,15 +403,21 @@
     }
 }
 
+.rest-api-body-codehinter {
+    .cm-editor {
+        min-height: 150px !important;
+    }
+}
+
 .border-danger {
     .cm-editor {
         border: 1px solid red !important;
     }
 }
 
-.runjs-editor .cm-editor {
-    border: none !important;
-}
+//.runjs-editor .cm-editor {
+//    border: none !important;
+//}
 
 .preview-alert-banner {
     height: fit-content;
@@ -479,8 +490,6 @@
     .codehinter-input {
         height: 100%;
         border: none !important;
-
-
     }
 }
 
@@ -651,12 +660,34 @@
     }
 }
 
+
+.code-editor-component {
+    .cm-editor {
+        min-height: 0 !important;
+    }
+}
+
 .cm-searchMatch.cm-searchMatch-selected {
     background-color: #F28F2D !important;
+}
+
+
+.cm-custom-singleline-completion-info {
+    display: none;
 }
 
 .tjdb-hinter-portal{
     .cm-theme{
         height: 100% ;
     }
+}
+
+.codehinter-helper-text {
+    font-family: IBM Plex Sans;
+    font-weight: 400;
+    font-size: 11px;
+    line-height: 16px;
+    letter-spacing: 0%;
+    vertical-align: middle;
+    color: var(--text-placeholder, #6A727C);
 }

@@ -121,25 +121,25 @@ const BaseManageOrgConstants = ({
     const globalCount =
       allConstants.length > 0
         ? allConstants.filter((constant) => {
-            if (constant.type === Constants.Global) {
-              const foundConstant = constant.values.find((env) => env.environmentName === envName);
-              if (!foundConstant || foundConstant.value === '') return false;
-              return true;
-            }
-            return false;
-          }).length
+          if (constant.type === Constants.Global) {
+            const foundConstant = constant.values.find((env) => env.environmentName === envName);
+            if (!foundConstant || foundConstant.value === '') return false;
+            return true;
+          }
+          return false;
+        }).length
         : 0;
 
     const secretCount =
       allConstants.length > 0
         ? allConstants.filter((constant) => {
-            if (constant.type === Constants.Secret) {
-              const foundConstant = constant.values.find((env) => env.environmentName === envName);
-              if (!foundConstant || foundConstant.value === '') return false;
-              return true;
-            }
-            return false;
-          }).length
+          if (constant.type === Constants.Secret) {
+            const foundConstant = constant.values.find((env) => env.environmentName === envName);
+            if (!foundConstant || foundConstant.value === '') return false;
+            return true;
+          }
+          return false;
+        }).length
         : 0;
 
     setGlobalCount(globalCount);
@@ -348,10 +348,10 @@ const BaseManageOrgConstants = ({
           toast.success('Constant updated successfully');
           onCancelBtnClicked();
         })
-        .catch(({ error }) => {
+        .catch(({ error, data }) => {
           setErrors(error);
-          toast.error(error);
-          if (error === NoPermissionMessage) {
+          toast.error(data?.statusCode === 403 ? 'You do not have permissions to perform this action' : data?.message);
+          if (error === NoPermissionMessage || data?.statusCode === 403) {
             redirectToWorkspace();
           }
         })
@@ -364,10 +364,10 @@ const BaseManageOrgConstants = ({
         toast.success(`${variable.type} constant created successfully!`);
         onCancelBtnClicked();
       })
-      .catch(({ error }) => {
+      .catch(({ error, data }) => {
         setErrors(error);
-        toast.error(error || 'Constant could not be created');
-        if (error === NoPermissionMessage) {
+        toast.error(data?.statusCode === 403 ? 'You do not have permissions to perform this action' : data?.message);
+        if (error === NoPermissionMessage || data?.statusCode === 403) {
           redirectToWorkspace();
         }
       })
@@ -390,9 +390,10 @@ const BaseManageOrgConstants = ({
         setSelectedConstant(null);
         setMode(MODES.NULL);
       })
-      .catch(({ error }) => {
-        toast.error(error);
-        if (error === NoPermissionMessage) {
+      .catch(({ error, data }) => {
+        setErrors(error);
+        toast.error(data?.statusCode === 403 ? 'You do not have permissions to perform this action' : data?.message);
+        if (error === NoPermissionMessage || data?.statusCode === 403) {
           redirectToWorkspace();
         }
       })
@@ -484,7 +485,7 @@ const BaseManageOrgConstants = ({
               <div className="workspace-setting-buttons-wrap">
                 {canCreateVariable() && (
                   <ButtonSolid
-                    data-cy="add-new-constant-button"
+                    data-cy="form-add-new-constant-button"
                     variant="primary"
                     onClick={() => {
                       setMode(() => MODES.CREATE);
@@ -511,7 +512,7 @@ const BaseManageOrgConstants = ({
                       onClick={() => handleTabChange(Constants.Global)}
                       style={{ color: 'var(--text-default)' }}
                     >
-                      <span className="workspace-constant-text">
+                      <span className="workspace-constant-text" data-cy="global-constants-button">
                         Global constants
                         <span className={`tab-count ${activeTab === Constants.Global ? 'active' : ''}`}>
                           ({globalCount})
@@ -523,7 +524,7 @@ const BaseManageOrgConstants = ({
                       onClick={() => handleTabChange(Constants.Secret)}
                       style={{ color: 'var(--text-default)' }}
                     >
-                      <span className="workspace-constant-text">
+                      <span className="workspace-constant-text" data-cy="secrets-constants-button">
                         Secrets
                         <span className={`tab-count ${activeTab === Constants.Secret ? 'active' : ''}`}>
                           ({secretCount})
@@ -597,7 +598,7 @@ const BaseManageOrgConstants = ({
                 <div className="manage-sso-container h-100">
                   <div className="d-flex manage-constant-wrapper-card">
                     {(activeTab === Constants.Global && globalCount > 0) ||
-                    (activeTab === Constants.Secret && secretCount > 0) ? (
+                      (activeTab === Constants.Secret && secretCount > 0) ? (
                       <div className="w-100 workspace-constant-card-body">
                         <ConstantTable
                           constants={currentTableData}

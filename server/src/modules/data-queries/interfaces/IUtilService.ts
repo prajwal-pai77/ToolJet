@@ -1,6 +1,18 @@
 import { Response } from 'express';
 import { User } from '@entities/user.entity';
 import { DataSource } from '@entities/data_source.entity';
+import { App } from '@entities/app.entity';
+import * as ivm from 'isolated-vm';
+
+export interface WorkflowExecutionOptions {
+  bundleContent?: string | null;
+  isolate?: ivm.Isolate | null;
+  context?: ivm.Context | null;
+}
+
+export interface DataQueryExecutionOptions {
+  workflow?: WorkflowExecutionOptions;
+}
 
 export interface IDataQueriesUtilService {
   validateQueryActionsAgainstEnvironment(
@@ -14,7 +26,10 @@ export interface IDataQueriesUtilService {
     dataQuery: any,
     queryOptions: object,
     response: Response,
-    environmentId?: string
+    environmentId?: string,
+    mode?: string,
+    app?: App,
+    opts?: DataQueryExecutionOptions
   ): Promise<object>;
 
   fetchServiceAndParsedParams(
@@ -22,7 +37,9 @@ export interface IDataQueriesUtilService {
     dataQuery: any,
     queryOptions: object,
     organization_id: string,
-    environmentId?: string
+    environmentId?: string,
+    user?: User,
+    opts?: DataQueryExecutionOptions
   ): Promise<{
     service: any;
     sourceOptions: object;
@@ -31,5 +48,12 @@ export interface IDataQueriesUtilService {
 
   setCookiesBackToClient(response: Response, responseHeaders: any): void;
 
-  parseQueryOptions(object: any, options: object, organization_id: string, environmentId?: string): Promise<object>;
+  parseQueryOptions(
+    object: any,
+    options: object,
+    organization_id: string,
+    environmentId?: string,
+    user?: User,
+    opts?: DataQueryExecutionOptions
+  ): Promise<object>;
 }

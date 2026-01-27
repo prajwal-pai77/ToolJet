@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Body, Patch, Param } from '@nestjs/common';
+import { Controller, Get, Delete, UseGuards, Body, Patch, Param } from '@nestjs/common';
 import { JwtAuthGuard } from '@modules/session/guards/jwt-auth.guard';
 import { decamelizeKeys } from 'humps';
 import { OrganizationConfigsUpdateDto } from './dto';
@@ -13,6 +13,7 @@ import { FeatureAbilityGuard } from './ability/guard';
 import { SSOGuard } from '@modules/licensing/guards/sso.guard';
 import { InstanceConfigsUpdateDto } from './dto';
 import { NotFoundException } from '@nestjs/common';
+import { User as UserEntity } from '@entities/user.entity';
 
 @InitModule(MODULES.LOGIN_CONFIGS)
 @Controller('login-configs')
@@ -39,9 +40,17 @@ export class LoginConfigsController implements ILoginConfigsController {
   @InitFeature(FEATURE_KEY.UPDATE_ORGANIZATION_SSO)
   @UseGuards(JwtAuthGuard, FeatureAbilityGuard)
   @Patch('/organization-sso')
-  async updateOrganizationSSOConfigs(@Body() body, @User() user) {
-    const result: any = await this.loginConfigsService.updateOrganizationSSOConfigs(user.organizationId, body);
+  async updateOrganizationSSOConfigs(@Body() body, @User() user: UserEntity) {
+    const result: any = await this.loginConfigsService.updateOrganizationSSOConfigs(user, body);
     return decamelizeKeys({ id: result.id });
+  }
+
+  //delete organization-sso config
+  @InitFeature(FEATURE_KEY.DELETE_ORGANIZATION_SSO)
+  @UseGuards(JwtAuthGuard, FeatureAbilityGuard)
+  @Delete('/organization-sso/:configId')
+  async deleteOrganizationSSOConfig(@Param('configId') configId: string, @User() user: UserEntity) {
+    return await this.loginConfigsService.deleteOrganizationSSOConfig(user, configId);
   }
 
   //get instance-sso configs
@@ -65,7 +74,7 @@ export class LoginConfigsController implements ILoginConfigsController {
   @InitFeature(FEATURE_KEY.UPDATE_INSTANCE_GENERAL_CONFIGS)
   @UseGuards(JwtAuthGuard, FeatureAbilityGuard)
   @Patch('/instance-general')
-  async updateGeneralConfigs(@Body() instanceConfigsUpdateDto: InstanceConfigsUpdateDto) {
+  async updateGeneralConfigs(@Body() instanceConfigsUpdateDto: InstanceConfigsUpdateDto, @User() user: UserEntity) {
     throw new NotFoundException();
   }
 
@@ -75,9 +84,18 @@ export class LoginConfigsController implements ILoginConfigsController {
   @Patch('/organization-general')
   async updateOrganizationGeneralConfigs(
     @Body() organizationConfigsUpdateDto: OrganizationConfigsUpdateDto,
-    @User() user
+    @User() user: UserEntity
   ) {
-    await this.loginConfigsService.updateGeneralOrganizationConfigs(user.organizationId, organizationConfigsUpdateDto);
+    await this.loginConfigsService.updateGeneralOrganizationConfigs(user, organizationConfigsUpdateDto);
+    return;
+  }
+
+  @InitFeature(FEATURE_KEY.INSTANCE_SSO_INHERIT)
+  @UseGuards(JwtAuthGuard, FeatureAbilityGuard)
+  @Patch('/organization-general/inherit-sso')
+  async updateInheritSSO(@Body() organizationConfigsUpdateDto: OrganizationConfigsUpdateDto, @User() user: UserEntity) {
+    const inheritSso = organizationConfigsUpdateDto.inheritSSO;
+    await this.loginConfigsService.updateInheritSSO(user, inheritSso);
     return;
   }
 }

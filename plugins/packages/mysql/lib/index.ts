@@ -1,6 +1,7 @@
 import knex, { Knex } from 'knex';
 import {
-  cacheConnection,
+  cacheConnectionWithConfiguration,
+  generateSourceOptionsHash,
   getCachedConnection,
   ConnectionTestResult,
   QueryService,
@@ -33,8 +34,20 @@ export default class MysqlQueryService implements QueryService {
     dataSourceId: string,
     dataSourceUpdatedAt: string
   ): Promise<QueryResult> {
+    let checkCache, knexInstance;
+    if (sourceOptions['allow_dynamic_connection_parameters']) {
+      if (sourceOptions.connection_type === 'hostname') {
+        sourceOptions['host'] = queryOptions['host'] ? queryOptions['host'] : sourceOptions['host'];
+        sourceOptions['database'] = queryOptions['database'] ? queryOptions['database'] : sourceOptions['database'];
+      } else if (sourceOptions.connection_type === 'socket_path') {
+        sourceOptions['database'] = queryOptions['database'] ? queryOptions['database'] : sourceOptions['database'];
+      }
+    }
+
     try {
-      const knexInstance = await this.getConnection(sourceOptions, {}, true, dataSourceId, dataSourceUpdatedAt);
+      // If dynamic connection parameters is toggled on - We don't cache the connection also destroy the connection created.
+      checkCache = sourceOptions['allow_dynamic_connection_parameters'] ? false : true;
+      knexInstance = await this.getConnection(sourceOptions, {}, checkCache, dataSourceId, dataSourceUpdatedAt);
 
       switch (queryOptions.mode) {
         case 'sql':
@@ -59,6 +72,8 @@ export default class MysqlQueryService implements QueryService {
       }
 
       throw new QueryError('Query could not be completed', errorMessage, errorDetails);
+    } finally {
+      if (!checkCache) await knexInstance.destroy();
     }
   }
 
@@ -104,38 +119,43 @@ export default class MysqlQueryService implements QueryService {
   }
 
   private async buildConnection(sourceOptions: SourceOptions): Promise<Knex> {
-    const props = sourceOptions.socket_path
-      ? { socketPath: sourceOptions.socket_path }
-      : {
-          host: sourceOptions.host,
-          port: +sourceOptions.port,
-          ssl: sourceOptions.ssl_enabled ?? false,
-        };
+  const props = sourceOptions.socket_path
+    ? { socketPath: sourceOptions.socket_path }
+    : {
+        host: sourceOptions.host,
+        port: +sourceOptions.port,
+      };
 
-    const sslObject = { rejectUnauthorized: (sourceOptions.ssl_certificate ?? 'none') != 'none' };
-    if (sourceOptions.ssl_certificate === 'ca_certificate') {
-      sslObject['ca'] = sourceOptions.ca_cert;
-    }
-    if (sourceOptions.ssl_certificate === 'self_signed') {
-      sslObject['ca'] = sourceOptions.root_cert;
-      sslObject['key'] = sourceOptions.client_key;
-      sslObject['cert'] = sourceOptions.client_cert;
-    }
+    const shouldUseSSL = sourceOptions.ssl_enabled;
+    let sslObject: any = null;
 
-    const config: Knex.Config = {
-      client: 'mysql2',
-      connection: {
-        ...props,
-        user: sourceOptions.username,
-        password: sourceOptions.password,
-        database: sourceOptions.database,
-        multipleStatements: true,
-        ...(sourceOptions.ssl_enabled && { ssl: sslObject }),
-      },
-      ...this.connectionOptions(sourceOptions),
-    };
-    return knex(config);
+if (shouldUseSSL) {
+  sslObject = { rejectUnauthorized: (sourceOptions.ssl_certificate ?? 'none') !== 'none' };
+  
+  if (sourceOptions.ssl_certificate === 'ca_certificate') {
+    sslObject.ca = sourceOptions.ca_cert;
+  } else if (sourceOptions.ssl_certificate === 'self_signed') {
+    sslObject.ca = sourceOptions.root_cert;
+    sslObject.key = sourceOptions.client_key;
+    sslObject.cert = sourceOptions.client_cert;
   }
+}
+
+  const config: Knex.Config = {
+    client: 'mysql2',
+    connection: {
+      ...props,
+      user: sourceOptions.username,
+      password: sourceOptions.password,
+      database: sourceOptions.database,
+      multipleStatements: true,
+      ...(shouldUseSSL ? { ssl: sslObject } : {}),
+    },
+    ...this.connectionOptions(sourceOptions),
+  };
+
+  return knex(config);
+}
 
   async getConnection(
     sourceOptions: SourceOptions,
@@ -145,13 +165,17 @@ export default class MysqlQueryService implements QueryService {
     dataSourceUpdatedAt?: string
   ): Promise<Knex> {
     if (checkCache) {
-      const cachedConnection = await getCachedConnection(dataSourceId, dataSourceUpdatedAt);
+      const optionsHash = generateSourceOptionsHash(sourceOptions);
+      const enhancedCacheKey = `${dataSourceId}_${optionsHash}`;
+      const cachedConnection = await getCachedConnection(enhancedCacheKey, dataSourceUpdatedAt);
       if (cachedConnection) return cachedConnection;
+
+      const connection = await this.buildConnection(sourceOptions);
+      cacheConnectionWithConfiguration(dataSourceId, enhancedCacheKey, connection);
+      return connection;
     }
 
-    const connection = await this.buildConnection(sourceOptions);
-    if (checkCache && dataSourceId) cacheConnection(dataSourceId, connection);
-    return connection;
+    return await this.buildConnection(sourceOptions);
   }
 
   buildBulkUpdateQuery(queryOptions: QueryOptions): string {

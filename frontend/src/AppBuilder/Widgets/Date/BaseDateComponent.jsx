@@ -1,5 +1,6 @@
 import React from 'react';
 import * as Icons from '@tabler/icons-react';
+import { useTranslation } from 'react-i18next';
 import { DatepickerInput } from './DatepickerInput';
 import TimepickerInput from './TimepickerInput';
 import cx from 'classnames';
@@ -7,6 +8,9 @@ import Label from '@/_ui/Label';
 import DatePickerComponent from 'react-datepicker';
 import CustomDatePickerHeader from './CustomDatePickerHeader';
 import { flip, offset } from '@floating-ui/dom';
+import { getModifiedColor } from '@/AppBuilder/Widgets/utils';
+import { getLabelWidthOfInput, getWidthTypeOfComponentStyles } from '../BaseComponents/hooks/useInput';
+import { getDateLocale } from './localeUtils';
 
 const tinycolor = require('tinycolor2');
 
@@ -26,7 +30,11 @@ export const BaseDateComponent = ({
   customHeaderProps,
   customTimeInputProps,
   customDateInputProps,
+  id,
 }) => {
+  const { i18n } = useTranslation();
+  const currentLocale = getDateLocale(i18n.language);
+
   const {
     selectedTextColor,
     fieldBorderRadius,
@@ -45,11 +53,11 @@ export const BaseDateComponent = ({
     accentColor,
     padding,
     errTextColor,
+    widthType,
   } = styles;
 
   const computedStyles = {
     height: height == 36 ? (padding == 'default' ? '36px' : '40px') : padding == 'default' ? height : height + 4,
-    width: '100%',
     borderColor: focus
       ? accentColor != '#4368E3'
         ? accentColor
@@ -59,7 +67,7 @@ export const BaseDateComponent = ({
       : disable || loading
       ? '1px solid var(--borders-disabled-on-white)'
       : 'var(--borders-default)',
-    '--tblr-input-border-color-darker': tinycolor(fieldBorderColor).darken(24).toString(),
+    '--tblr-input-border-color-darker': getModifiedColor(fieldBorderColor, 24),
     borderRadius: `${fieldBorderRadius || borderRadius}px`,
     color: !['#1B1F24', '#000', '#000000ff'].includes(selectedTextColor)
       ? selectedTextColor
@@ -112,7 +120,7 @@ export const BaseDateComponent = ({
     [iconDirection]: '10px',
   };
 
-  const _width = (labelWidth / 100) * 70;
+  const _width = getLabelWidthOfInput(widthType, labelWidth);
 
   const iconName = styles.icon; // Replace with the name of the icon you want
   // eslint-disable-next-line import/namespace
@@ -147,15 +155,22 @@ export const BaseDateComponent = ({
         auto={labelAutoWidth}
         isMandatory={isMandatory}
         _width={_width}
-        top={'1px'}
+        widthType={widthType}
+        inputId={`component-${id}`}
       />
-      <div className="w-100 px-0 h-100">
+      <div
+        className="px-0 h-100"
+        style={{
+          ...getWidthTypeOfComponentStyles(widthType, labelWidth, labelAutoWidth, alignment),
+        }}
+      >
         <DatePickerComponent
           className={`input-field form-control validation-without-icon px-2`}
           popperClassName={cx('tj-table-datepicker tj-datepicker-widget', {
             'theme-dark dark-theme': darkMode,
           })}
           ref={datePickerRef}
+          locale={currentLocale}
           showMonthDropdown
           showYearDropdown
           dropdownMode="select"
@@ -179,7 +194,12 @@ export const BaseDateComponent = ({
               visibility={visibility}
               errTextColor={errTextColor}
               direction={direction}
+              isMandatory={isMandatory}
+              labelWidth={labelWidth}
+              auto={labelAutoWidth}
+              label={label}
               {...customDateInputProps}
+              inputId={id}
             />
           }
           customTimeInput={<TimepickerInput darkMode={darkMode} {...customTimeInputProps} />}

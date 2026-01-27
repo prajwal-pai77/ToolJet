@@ -5,6 +5,7 @@ import { authenticationService } from '@/_services/authentication.service';
 import queryString from 'query-string';
 import _ from 'lodash';
 import { eraseCookie, getCookie } from '.';
+import { fetchEdition } from '@/modules/common/helpers/utils';
 
 export const getPrivateRoute = (page, params = {}) => {
   const routes = {
@@ -13,14 +14,19 @@ export const getPrivateRoute = (page, params = {}) => {
     preview: '/applications/:slug/versions/:versionId/:pageHandle',
     launch: '/applications/:slug/:pageHandle',
     workspace_settings: '/workspace-settings/users',
+    workspace_settings_builder: '/workspace-settings/themes',
     settings: '/settings',
     database: '/database',
     integrations: '/integrations/marketplace',
     data_sources: '/data-sources',
     audit_logs: '/audit-logs',
+    home: '/home',
     workflows: '/workflows',
     workspace_constants: '/workspace-constants',
     profile_settings: '/profile-settings',
+    modules: '/modules',
+    subscription: '/settings/subscription',
+    license: '/settings/license',
   };
 
   let url = routes[page];
@@ -103,7 +109,7 @@ export const appendWorkspaceId = (slug, path, replaceId = false) => {
   path = getPathname(path);
 
   let newPath = path;
-  if (path === '/:workspaceId' || path.split('/').length === 2 || path.includes('instance-settings')) {
+  if (path === '/:workspaceId' || path.split('/').length === 2 || path.includes('settings')) {
     newPath = `/${slug}`;
   } else {
     const paths = path.split('/').filter((path) => path !== '');
@@ -135,6 +141,7 @@ export const getWorkspaceIdOrSlugFromURL = () => {
     'confirm-invite',
     'oauth2',
     'applications',
+    'embed-apps',
     'integrations',
     'settings',
     'licence',
@@ -169,7 +176,7 @@ export const excludeWorkspaceIdFromURL = (pathname) => {
     const paths = pathname?.split('/').filter((path) => path !== '');
     paths.shift();
     const newPath = paths.join('/');
-    return newPath ? `/${newPath}` : '/';
+    return newPath ? `/${newPath}` : '/home'; //Redirect to Home Page
   }
   return pathname;
 };
@@ -181,6 +188,7 @@ export const returnWorkspaceIdIfNeed = (path) => {
   if (path) {
     const paths = [
       '/applications/',
+      '/embed-apps/',
       '/integrations',
       '/instance-settings',
       '/organization-invitations/',
@@ -190,10 +198,33 @@ export const returnWorkspaceIdIfNeed = (path) => {
   }
   return `/${getWorkspaceId()}`;
 };
-export const getRedirectURL = (path) => {
+export const getRedirectURL = (path, isUserLoggingIn = false) => {
   let redirectLoc = '/';
+  const instanceLevelRoutes = [
+    '/all-users',
+    '/all-workspaces',
+    '/manage-instance-settings',
+    '/white-labelling',
+    '/instance-login',
+    '/smtp',
+    '/license',
+  ];
+  if (isUserLoggingIn && !path) {
+    const role = authenticationService?.currentSessionValue?.role?.name;
+    const isEndUser = role === 'end-user';
+    const isCommunityEdition = fetchEdition() === 'ce';
+
+    if (isEndUser || isCommunityEdition) {
+      path = '/'; // End-users and CE Edon't have access to Home route
+    }
+  }
+
   if (path) {
-    redirectLoc = `${returnWorkspaceIdIfNeed(path)}${path !== '/' ? path : ''}`;
+    if (instanceLevelRoutes.includes(path)) {
+      redirectLoc = `/settings${path}`;
+    } else {
+      redirectLoc = `${returnWorkspaceIdIfNeed(path)}${path !== '/' ? path : ''}`;
+    }
   } else {
     const redirectTo = getRedirectTo();
     const { from } = redirectTo ? { from: { pathname: redirectTo } } : { from: { pathname: '/' } };
@@ -210,7 +241,8 @@ export const getRedirectTo = (paramObj) => {
   let combined = Array.from(params.entries())
     .map((param) => param.join('='))
     .join('&');
-  return params.get('redirectTo') ? combined.replace('redirectTo=', '') : '/';
+  console.log(combined, 'combined');
+  return params.get('redirectTo') ? combined.replace('redirectTo=', '') : '/home'; //default redirect to
 };
 
 export const getPreviewQueryParams = () => {

@@ -15,7 +15,6 @@ import { createLayoutSlice } from './slices/layoutSlice';
 import { immer } from 'zustand/middleware/immer';
 import { createResolvedSlice } from './slices/resolvedSlice';
 import { createEnvironmentsAndVersionsSlice } from './slices/environmentsAndVersionsSlice';
-import { createEditorLicenseSlice } from './slices/editorLicenseSlice';
 import { createAppVersionSlice } from './slices/appVersionSlice';
 import { createPageMenuSlice } from './slices/pageMenuSlice';
 import { createLicenseSlice } from './slices/licenseSlice';
@@ -27,6 +26,11 @@ import { createCodeHinterSlice } from './slices/codeHinterSlice';
 import { createDebuggerSlice } from './slices/debuggerSlice';
 import { createGitSyncSlice } from './slices/gitSyncSlice';
 import { createAiSlice } from './slices/aiSlice';
+import { createFixWithAiSlice } from './slices/fixWithAi';
+import { createWhiteLabellingSlice } from './slices/whiteLabellingSlice';
+import { createFormComponentSlice } from './slices/formComponentSlice';
+import { createInspectorSlice } from './slices/inspectorSlice';
+import { createModuleSlice } from './slices/moduleSlice';
 
 export default create(
   zustandDevTools(
@@ -46,7 +50,6 @@ export default create(
       ...createResolvedSlice(...state),
       ...createLayoutSlice(...state),
       ...createEnvironmentsAndVersionsSlice(...state),
-      // ...createEditorLicenseSlice(...state),
       ...createAppVersionSlice(...state),
       ...createPageMenuSlice(...state),
       ...createLicenseSlice(...state),
@@ -58,6 +61,11 @@ export default create(
       ...createDebuggerSlice(...state),
       ...createGitSyncSlice(...state),
       ...createAiSlice(...state),
+      ...createFixWithAiSlice(...state),
+      ...createWhiteLabellingSlice(...state),
+      ...createFormComponentSlice(...state),
+      ...createInspectorSlice(...state),
+      ...createModuleSlice(...state),
     })),
     { name: 'App Builder Store', anonymousActionType: 'unknown' }
   )

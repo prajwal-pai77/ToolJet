@@ -6,7 +6,7 @@ import { tooljetDatabaseService } from '@/_services';
 import _ from 'lodash';
 import { renderDatatypeIcon, listAllPrimaryKeyColumns, postgresErrorCode } from '../constants';
 import PostgrestQueryBuilder from '@/_helpers/postgrestQueryBuilder';
-import DropDownSelect from '../../Editor/QueryManager/QueryEditors/TooljetDatabase/DropDownSelect';
+import DropDownSelect from '@/AppBuilder/QueryManager/QueryEditors/TooljetDatabase/DropDownSelect';
 import Information from '@/_ui/Icon/solidIcons/Information';
 import SolidIcon from '@/_ui/Icon/SolidIcons';
 import { ToolTip } from '@/_components/ToolTip';
@@ -18,8 +18,8 @@ import cx from 'classnames';
 import ForeignKeyIndicator from '../Icons/ForeignKeyIndicator.svg';
 import ArrowRight from '../Icons/ArrowRight.svg';
 import Skeleton from 'react-loading-skeleton';
-import DateTimePicker from '@/Editor/QueryManager/QueryEditors/TooljetDatabase/DateTimePicker';
-import { getLocalTimeZone, getUTCOffset } from '@/Editor/QueryManager/QueryEditors/TooljetDatabase/util';
+import DateTimePicker from '@/AppBuilder/QueryManager/QueryEditors/TooljetDatabase/DateTimePicker';
+import { getLocalTimeZone, getUTCOffset } from '@/AppBuilder/QueryManager/QueryEditors/TooljetDatabase/util';
 import CodeHinter from '@/AppBuilder/CodeEditor';
 import { resolveReferences } from '@/AppBuilder/CodeEditor/utils';
 
@@ -177,7 +177,9 @@ const EditRowForm = ({
   }
 
   function isMatchingForeignKeyColumnDetails(columnHeader) {
-    const matchingColumn = foreignKeys.find((foreignKey) => foreignKey.column_names[0] === columnHeader);
+    const matchingColumn = Array.isArray(foreignKeys)
+      ? foreignKeys.find((foreignKey) => foreignKey.column_names[0] === columnHeader)
+      : undefined;
     return matchingColumn;
   }
 

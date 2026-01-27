@@ -1,9 +1,9 @@
-import { CreateUserDto, UpdateGivenWorkspaceDto, UpdateUserDto, WorkspaceDto } from '../dto/external_apis.dto';
+import { CreateUserDto, UpdateGivenWorkspaceDto, UpdateUserDto, WorkspaceDto } from '../dto';
 import { EntityManager } from 'typeorm';
 
 export interface IExternalApisService {
   // Gets all users when no ID is passed, filters by ID when ID is passed
-  getAllUsers(id?: string, manager?: EntityManager): Promise<any>;
+  getAllUsers(lookupKey?: string, groupNamesString?: string, manager?: EntityManager): Promise<any>;
 
   // Creates a new user with the provided user data
   createUser(userDto: CreateUserDto): Promise<any>;

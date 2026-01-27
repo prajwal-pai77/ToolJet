@@ -1,273 +1,223 @@
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
 import _ from 'lodash';
 // eslint-disable-next-line import/no-unresolved
-import { slide as MobileMenu } from 'react-burger-menu';
 import { DarkModeToggle } from '@/_components/DarkModeToggle';
 import Header from './Header';
-import Cross from '@/_ui/Icon/solidIcons/Cross';
 import useStore from '@/AppBuilder/_stores/store';
-import { buildTree } from '../LeftSidebar/PageMenu/Tree/utilities';
+import { buildTree } from '../RightSideBar/PageSettingsTab/PageMenu/Tree/utilities';
 import * as Icons from '@tabler/icons-react';
+import AppLogo from '@/_components/AppLogo';
+import { useModuleContext } from '@/AppBuilder/_contexts/ModuleContext';
+import OverflowTooltip from '@/_components/OverflowTooltip';
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, useSidebar } from '@/components/ui/sidebar';
+import toast from 'react-hot-toast';
+import { RenderPageAndPageGroup } from '@/AppBuilder/RightSideBar/PageSettingsTab/PageMenu/PageGroup';
+import { shallow } from 'zustand/shallow';
 
-const RenderGroup = ({ pages, pageGroup, currentPage, darkMode, handlepageSwitch, currentPageId, icon }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const groupActive = currentPage.pageGroupId === pageGroup?.id;
-  const homePageId = useStore((state) => state.app.homePageId);
-  const handleToggle = () => {
-    setIsExpanded(!isExpanded);
-  };
-  // eslint-disable-next-line import/namespace
-  const IconElement = Icons?.[pageGroup?.icon] ?? Icons?.['IconFileDescription'];
-  return (
-    <>
-      <div style={{ border: 'none' }} className={`accordion-item  ${darkMode ? 'dark-mode' : ''} `}>
-        <div
-          onClick={handleToggle}
-          key={pageGroup.id}
-          className={`viewer-page-handler mb-2 cursor-pointer page-group-wrapper ${
-            groupActive ? 'page-group-active' : ''
-          } ${darkMode && 'dark'}`}
-        >
-          <div className={`card mb-1`}>
-            <div className="card-body">
-              <IconElement />
-              <span style={{ color: 'var(--slate12)' }}>{_.truncate(pageGroup?.name, { length: 22 })}</span>
-              <svg
-                className={`page-group-collapse ${isExpanded ? 'expanded' : 'collapsed'}`}
-                width={17}
-                height={16}
-                viewBox="0 0 17 16"
-                fill="black"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M11.1257 4L5.27446 4C4.50266 4 4.02179 4.83721 4.41068 5.50387L7.33631 10.5192C7.72218 11.1807 8.67798 11.1807 9.06386 10.5192L11.9895 5.50387C12.3784 4.83721 11.8975 4 11.1257 4Z"
-                  fill="#ACB2B9"
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
-        {isExpanded && (
-          <div style={{ paddingLeft: '16px' }}>
-            {pages.map((page) => {
-              const isHomePage = page.id === homePageId;
-              const iconName = isHomePage && !page.icon ? 'IconHome2' : page.icon;
-              // eslint-disable-next-line import/namespace
-              const IconElement = Icons?.[iconName] ?? Icons?.['IconFileDescription'];
-              return page?.hidden || page?.disabled ? null : (
-                <div
-                  key={page.handle}
-                  onClick={() => handlepageSwitch(page?.id)}
-                  className={`viewer-page-handler mb-2 cursor-pointer ${darkMode && 'dark'}`}
-                >
-                  <div className={`card mb-1  ${page?.id === currentPageId ? 'active' : ''}`}>
-                    <div className="card-body">
-                      <IconElement />
-                      <span style={{ color: 'var(--slate12)' }}>{_.truncate(page?.name, { length: 22 })}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </>
-  );
-};
-
-const RenderPageGroups = ({ pages, handlepageSwitch, darkMode, currentPageId, currentPage }) => {
-  const tree = buildTree(pages);
-  const homePageId = useStore((state) => state.app.homePageId);
-  return (
-    <div className="w-100">
-      <div className={`pages-container ${darkMode && 'dark'}`}>
-        {tree.map((page) => {
-          if (page.isPageGroup) {
-            return (
-              <RenderGroup
-                currentPage={currentPage}
-                key={page.id}
-                pages={page.children}
-                pageGroup={page}
-                currentPageId={currentPageId}
-                darkMode={darkMode}
-                handlepageSwitch={handlepageSwitch}
-              />
-            );
-          } else {
-            const isHomePage = page.id === homePageId;
-            const iconName = isHomePage && !page.icon ? 'IconHome2' : page.icon;
-            // eslint-disable-next-line import/namespace
-            const IconElement = Icons?.[iconName] ?? Icons?.['IconFileDescription'];
-            return page?.hidden || page?.disabled ? null : (
-              <div
-                key={page.handle}
-                onClick={() => handlepageSwitch(page?.id)}
-                className={`viewer-page-handler mb-2 cursor-pointer ${darkMode && 'dark'}`}
-              >
-                <div className={`card mb-1  ${page?.id === currentPageId ? 'active' : ''}`}>
-                  <div className="card-body">
-                    <IconElement />
-                    <span style={{ color: 'var(--slate12)' }}>{_.truncate(page?.name, { length: 22 })}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-        })}
-      </div>
-    </div>
-  );
-};
-
-const MobileNavigationMenu = ({ pages, switchPage, currentPageId, darkMode, changeToDarkMode, showDarkModeToggle }) => {
+const MobileNavigationMenu = ({
+  pages,
+  switchPage,
+  switchToHomePage,
+  currentPageId,
+  darkMode,
+  changeToDarkMode,
+  showDarkModeToggle,
+  appName,
+  bgStyles,
+}) => {
+  const { moduleId } = useModuleContext();
+  const { toggleSidebar } = useSidebar();
   const selectedVersionName = useStore((state) => state.selectedVersion?.name);
   const selectedEnvironmentName = useStore((state) => state.selectedEnvironment?.name);
-  const license = useStore((state) => state.license);
+  const currentLayout = useStore((state) => state.currentLayout, shallow);
+  const selectedVersion = useStore((state) => state.selectedVersion, shallow);
+  const isMobilePreviewMode = selectedVersion?.id && currentLayout === 'mobile';
 
-  const [hamburgerMenuOpen, setHamburgerMenuOpen] = useState(false);
-  const handlepageSwitch = (pageId) => {
-    setHamburgerMenuOpen(false);
+  const hasAppPagesAddNavGroupEnabled = useStore((state) => state.license?.featureAccess?.appPagesAddNavGroupEnabled);
+  const hasAppPagesHeaderAndLogoEnabled = useStore(
+    (state) => state.license?.featureAccess?.appPagesHeaderAndLogoEnabled
+  );
+
+  const homePageId = useStore((state) => state.appStore.modules[moduleId].app.homePageId);
+
+  const { definition: { styles = {}, properties = {} } = {} } = useStore((state) => state.pageSettings) || {};
+  const { name, hideLogo, hideHeader } = properties ?? {};
+
+  const headerHidden = hasAppPagesHeaderAndLogoEnabled ? hideHeader : false;
+  const logoHidden = hasAppPagesHeaderAndLogoEnabled ? hideLogo : false;
+
+  const pagesVisibilityState = useStore((state) => state.resolvedStore.modules[moduleId]?.others?.pages || {}, shallow);
+
+  const pagesTree = useMemo(
+    () => (hasAppPagesAddNavGroupEnabled ? buildTree(pages) : pages),
+    [hasAppPagesAddNavGroupEnabled, pages]
+  );
+
+  const mainNavBarPages = useMemo(() => {
+    return pagesTree.filter((page) => {
+      const pageVisibility = pagesVisibilityState[page?.id]?.hidden ?? false;
+      return (
+        !page?.restricted &&
+        !pageVisibility &&
+        !page?.disabled &&
+        (!page?.isPageGroup ||
+          (page.children?.length > 0 &&
+            page.children.some((child) => !child?.disabled) &&
+            page.children.some((child) => {
+              const pageVisibility = pagesVisibilityState[child?.id]?.hidden ?? false;
+              return pageVisibility === false;
+            })))
+      );
+    });
+  }, [pagesTree, pagesVisibilityState]);
+
+  // In mobile view both icon and label will always be visible
+  const labelStyle = {
+    icon: {
+      hidden: false,
+    },
+    label: {
+      hidden: false,
+    },
+  };
+
+  const getAbsoluteUrl = (url) => {
+    if (!url) return '';
+
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    return `https://${url}`;
+  };
+
+  const switchPageWrapper = (page) => {
+    if (page?.type === 'url') {
+      if (page?.url) {
+        const finalUrl = getAbsoluteUrl(page.url);
+        if (finalUrl) {
+          if (page.openIn === 'new_tab') {
+            window.open(finalUrl, '_blank');
+          } else {
+            window.location.href = finalUrl;
+          }
+        }
+      } else {
+        toast.error('No URL provied');
+        return;
+      }
+      return;
+    }
+
+    if (page?.type === 'app') {
+      if (page?.appId) {
+        const baseUrl = `${window.public_config?.TOOLJET_HOST}/applications/${page.appId}`;
+        if (page.openIn === 'new_tab') {
+          window.open(baseUrl, '_blank');
+        } else {
+          window.location.href = baseUrl;
+        }
+      } else {
+        toast.error('No app selected');
+        return;
+      }
+      return;
+    }
+
+    if (currentPageId === page?.id) {
+      return;
+    }
     const queryParams = {
       version: selectedVersionName,
       env: selectedEnvironmentName,
     };
-    switchPage(pageId, pages.find((page) => page.id === pageId)?.handle, Object.entries(queryParams), true);
-  };
-  var styles = {
-    bmBurgerButton: {
-      position: 'absolute',
-      width: '16px',
-      height: '16px',
-      top: '13px',
-      right: '1rem',
-    },
-    bmBurgerBars: {
-      background: 'var(--slate12)',
-    },
-    bmCrossButton: {
-      display: 'none',
-      cursor: 'pointer',
-    },
-    bmCross: {
-      background: '#bdc3c7',
-    },
-    bmMenuWrap: {
-      height: '100%',
-      width: 'calc(100% - 20%)',
-      top: 0,
-      right: 0,
-    },
-    bmMenu: {
-      background: darkMode ? '#202B37' : '#fff',
-      padding: '0',
-    },
-    bmMorphShape: {
-      fill: '#373a47',
-    },
-    bmItemList: {
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: 'var(--base)',
-    },
-    bmItem: {
-      display: 'inline-block',
-      padding: '0.5rem 0rem',
-      width: '100%',
-    },
-    bmOverlay: {
-      background: 'rgba(0, 0, 0, 0.3)',
-    },
+    switchPage(page?.id, pages.find((p) => page.id === p?.id)?.handle, Object.entries(queryParams));
   };
 
-  const currentPage = pages.find((page) => page.id === currentPageId);
-
-  const isLicensed =
-    !_.get(license, 'featureAccess.licenseStatus.isExpired', true) &&
-    _.get(license, 'featureAccess.licenseStatus.isLicenseValid', false);
-  const homePageId = useStore((state) => state.app.homePageId);
+  const computedStyles = {
+    '--nav-item-label-color': !styles.textColor.isDefault ? styles.textColor.value : 'var(--text-placeholder, #6A727C)',
+    '--nav-item-icon-color': !styles.iconColor.isDefault ? styles.iconColor.value : 'var(--cc-default-icon, #6A727C)',
+    '--selected-nav-item-label-color': !styles.selectedTextColor.isDefault
+      ? styles.selectedTextColor.value
+      : 'var(--cc-primary-text, #1B1F24)',
+    '--selected-nav-item-icon-color': !styles.selectedIconColor.isDefault
+      ? styles.selectedIconColor.value
+      : 'var(--cc-default-icon, #6A727C)',
+    '--hovered-nav-item-pill-bg': !styles.pillHoverBackgroundColor.isDefault
+      ? styles.pillHoverBackgroundColor.value
+      : 'var(--cc-surface2-surface, #F6F8FA)',
+    '--selected-nav-item-pill-bg': !styles.pillSelectedBackgroundColor.isDefault
+      ? styles.pillSelectedBackgroundColor.value
+      : 'var(--cc-appBackground-surface, #F6F6F6)',
+    '--nav-item-pill-radius': `${styles.pillRadius.value}px`,
+  };
 
   return (
-    <>
-      <MobileMenu
-        isOpen={hamburgerMenuOpen}
-        styles={styles}
-        pageWrapId={'page-wrap'}
-        outerContainerId={'outer-container'}
-        onStateChange={(state) => setHamburgerMenuOpen(state.isOpen)}
-        right
-      >
-        <div className="pt-0">
-          <Header className={'mobile-header'}>
-            <div className="py-2 row w-100">
-              <div className="col">
-                <span style={{ color: 'var(--slate12)' }}>Menu</span>
-              </div>
-              <div onClick={() => setHamburgerMenuOpen(false)} className="col-1 cursor-pointer">
-                <Cross fill={'var(--slate12)'} />
-              </div>
-            </div>
-          </Header>
-
-          <div className="w-100">
-            <div className={`pages-container ${darkMode && 'dark'}`}>
-              {isLicensed ? (
-                <RenderPageGroups
-                  pages={pages}
-                  currentPageId={currentPageId}
-                  darkMode={darkMode}
-                  handlepageSwitch={handlepageSwitch}
-                  currentPage={currentPage}
-                />
-              ) : (
-                pages.map((page) => {
-                  const isHomePage = page.id === homePageId;
-                  const iconName = isHomePage && !page.icon ? 'IconHome2' : page.icon;
-                  // eslint-disable-next-line import/namespace
-                  const IconElement = Icons?.[iconName] ?? Icons?.['IconFileDescription'];
-                  return page?.hidden || page?.disabled ? null : (
-                    <div
-                      key={page.handle}
-                      onClick={() => handlepageSwitch(page?.id)}
-                      className={`viewer-page-handler mb-2 cursor-pointer ${darkMode && 'dark'}`}
-                    >
-                      <div className={`card mb-1  ${page?.id === currentPageId ? 'active' : ''}`}>
-                        <div className="card-body">
-                          <IconElement />
-                          <span style={{ color: 'var(--slate12)' }}>{_.truncate(page?.name, { length: 22 })}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+    <Sidebar
+      variant={'floating'}
+      sidebarWidth="290px"
+      sheetProps={{
+        container: isMobilePreviewMode
+          ? document.getElementsByClassName('canvas-area')[0]
+          : document.querySelector('.viewer.mobile-view'),
+        overlayClassName: 'tw-absolute tw-h-dvh',
+        className: 'tw-absolute tw-h-dvh tw-p-0 mobile-page-menu-popup',
+        style: bgStyles,
+      }}
+      className="group-data-[side=left]:!tw-border-r-0"
+    >
+      <SidebarHeader>
+        <Header className={'mobile-header'}>
+          <div onClick={toggleSidebar} className="cursor-pointer">
+            <div className="icon-btn">
+              <Icons.IconX size={16} color="var(--icon-strong)" />
             </div>
           </div>
-        </div>
+          <div className="w-100 tw-min-w-0 tw-shrink tw-px-[7px]">
+            <h1 className="navbar-brand d-flex align-items-center justify-content-center tw-gap-[12px] p-0">
+              {!logoHidden && (
+                <div data-cy="viewer-page-logo" onClick={switchToHomePage} className="cursor-pointer tw-flex-shrink-0">
+                  <AppLogo height={32} isLoadingFromHeader={false} viewer={true} />
+                </div>
+              )}
+              {!headerHidden && (
+                <OverflowTooltip childrenClassName="app-title">{name?.trim() ? name : appName}</OverflowTooltip>
+              )}
+            </h1>
+          </div>
+        </Header>
+      </SidebarHeader>
+      <SidebarContent className="mobile-navigation-area page-menu-scroll">
+        <RenderPageAndPageGroup
+          isLicensed={hasAppPagesAddNavGroupEnabled}
+          switchPageWrapper={switchPageWrapper}
+          pages={pages}
+          labelStyle={labelStyle}
+          computedStyles={computedStyles}
+          darkMode={darkMode}
+          visibleLinks={mainNavBarPages}
+          overflowLinks={[]}
+          position="side"
+          isSidebarPinned={true}
+          currentMode="view"
+          currentPageId={currentPageId}
+          homePageId={homePageId}
+        />
+      </SidebarContent>
+      <SidebarFooter>
         {showDarkModeToggle && (
-          <div>
-            <hr className="m-0 mb-3" />
-            <div className="d-flex justify-content-center">
-              <div
-                className={`d-flex align-items-center justify-content-center`}
-                style={{ border: '1px solid var(--slate7)', width: 'calc(100% - 20px)' }}
-              >
-                <DarkModeToggle
-                  switchDarkMode={changeToDarkMode}
-                  darkMode={darkMode}
-                  showText={true}
-                  tooltipPlacement={'top'}
-                />
-              </div>
-            </div>
+          <div className="page-dark-mode-btn-wrapper !tw-pb-[calc(env(safe-area-inset-bottom)+10px)]">
+            <DarkModeToggle
+              switchDarkMode={changeToDarkMode}
+              darkMode={darkMode}
+              showText={false}
+              tooltipPlacement={'top'}
+              toggleSize="large"
+              btnClassName="tw-w-[36px] tw-h-[36px]"
+            />
           </div>
         )}
-      </MobileMenu>
-    </>
+      </SidebarFooter>
+    </Sidebar>
   );
 };
 

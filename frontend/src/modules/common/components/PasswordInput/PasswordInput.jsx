@@ -13,7 +13,7 @@ const PasswordInput = ({
   onChange,
   error,
   name = 'password',
-  dataCy = 'password-input',
+  dataCy = 'password',
   minLength = 5,
   hint = `Password must be at least ${minLength} characters`,
   disabled = false,
@@ -59,8 +59,8 @@ const PasswordInput = ({
           value={value}
           onChange={handleChange}
           required
-          minLength={minLength}
-          data-cy={dataCy}
+          // minLength={minLength}
+          data-cy={`${dataCy}-input`}
         />
         <button
           type="button"
@@ -77,7 +77,6 @@ const PasswordInput = ({
         </p>
       ) : (
         <p className="password-input__hint" data-cy={`${dataCy}-hint`}>
-          {hint}
         </p>
       )}
     </div>

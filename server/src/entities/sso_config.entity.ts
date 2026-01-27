@@ -6,8 +6,10 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  OneToMany,
 } from 'typeorm';
 import { Organization } from './organization.entity';
+import { SsoConfigOidcGroupSync } from './sso_config_oidc_group_sync.entity';
 
 type Google = {
   clientId: string;
@@ -21,6 +23,7 @@ type OpenId = {
   clientId: string;
   clientSecret: string;
   name: string;
+  customScopes: string; 
   wellKnownUrl: string;
   claimName: string;
   groupMapping: { [key: string]: string };
@@ -38,11 +41,13 @@ type LDAP = {
     serverCert: string;
   };
   basedn: string;
+  enableGroupSync: boolean;
 };
 type SAML = {
   name: string;
   idpMetadata: string;
   groupAttribute: string;
+  groupSyncEnabled: boolean;
 };
 export enum SSOType {
   GOOGLE = 'google',
@@ -97,4 +102,8 @@ export class SSOConfigs {
   @ManyToOne(() => Organization, (organization) => organization.id)
   @JoinColumn({ name: 'organization_id' })
   organization: Organization;
+
+  @OneToMany(() => SsoConfigOidcGroupSync, (groupSync) => groupSync.ssoConfig)
+  @JoinColumn({ name: 'sso_config_id', referencedColumnName: 'id' })
+  oidcGroupSyncs: SsoConfigOidcGroupSync[];
 }

@@ -9,9 +9,11 @@ const { sentryWebpackPlugin } = require('@sentry/webpack-plugin');
 const fs = require('fs');
 const versionPath = path.resolve(__dirname, '.version');
 const version = fs.readFileSync(versionPath, 'utf-8').trim();
+const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin');
 
 const environment = process.env.NODE_ENV === 'production' ? 'production' : 'development';
 const edition = process.env.TOOLJET_EDITION;
+const isDevEnv = process.env.NODE_ENV === 'development';
 
 // Create path to empty module
 const emptyModulePath = path.resolve(__dirname, 'src/modules/emptyModule');
@@ -35,7 +37,6 @@ const plugins = [
   new HtmlWebpackPlugin({
     template: './src/index.ejs',
     favicon: './assets/images/logo.svg',
-    hash: environment === 'production',
   }),
   new CompressionPlugin({
     test: /\.js(\?.*)?$/i,
@@ -76,12 +77,19 @@ if (process.env.APM_VENDOR === 'sentry') {
   );
 }
 
+if (isDevEnv) {
+  plugins.push(new ReactRefreshWebpackPlugin({ overlay: false }));
+}
+
 module.exports = {
   mode: environment,
   optimization: {
     minimize: environment === 'production',
     usedExports: true,
     runtimeChunk: 'single',
+    moduleIds: 'deterministic',
+    chunkIds: 'deterministic',
+    realContentHash: true,
     minimizer: [
       new TerserPlugin({
         terserOptions: {
@@ -118,6 +126,7 @@ module.exports = {
     fallback: {
       process: require.resolve('process/browser.js'),
       path: require.resolve('path-browserify'),
+      util: require.resolve('util/'),
       '@ee/modules': emptyModulePath,
       '@cloud/modules': emptyModulePath,
     },
@@ -184,6 +193,11 @@ module.exports = {
           },
           {
             loader: 'sass-loader',
+            options: {
+              sassOptions: {
+                silenceDeprecations: ['global-builtin', 'import', 'color-functions'],
+              },
+            },
           },
         ],
       },
@@ -197,8 +211,17 @@ module.exports = {
           loader: 'babel-loader',
           options: {
             plugins: [
-              ['import', { libraryName: 'lodash', libraryDirectory: '', camel2DashComponentName: false }, 'lodash'],
-            ],
+              isDevEnv && require.resolve('react-refresh/babel'),
+              [
+                'import',
+                {
+                  libraryName: 'lodash',
+                  libraryDirectory: '',
+                  camel2DashComponentName: false,
+                },
+                'lodash',
+              ],
+            ].filter(Boolean),
           },
         },
       },
@@ -215,10 +238,17 @@ module.exports = {
       directory: path.resolve(__dirname, 'assets'),
       publicPath: '/assets/',
     },
+    client: {
+      overlay: false,
+    },
   },
   output: {
+    filename: environment === 'production' ? '[name].[contenthash:8].js' : '[name].js',
+    chunkFilename: environment === 'production' ? '[name].[contenthash:8].chunk.js' : '[name].chunk.js',
+    assetModuleFilename: 'assets/[contenthash:8][ext][query]',
     publicPath: ASSET_PATH,
     path: path.resolve(__dirname, 'build'),
+    clean: true,
   },
   externals: {
     // global app config object
@@ -235,6 +265,11 @@ module.exports = {
         process.env.TOOLJET_MARKETPLACE_URL || 'https://tooljet-plugins-production.s3.us-east-2.amazonaws.com',
       TOOLJET_EDITION: process.env.TOOLJET_EDITION,
       ENABLE_WORKFLOW_SCHEDULING: process.env.ENABLE_WORKFLOW_SCHEDULING,
+      WEBSITE_SIGNUP_URL: process.env.WEBSITE_SIGNUP_URL || 'https://www.tooljet.com/signup',
+      TJ_SELFHOST_CREDITS_APP:
+        process.env.TJ_SELFHOST_CREDITS_APP ||
+        'https://app.tooljet.com/applications/c1ec8a6c-ee9a-4a7d-ba9b-3590bbeaf6b9',
+      ENABLE_PASSWORD_COMPLEXITY_RULES: process.env.ENABLE_PASSWORD_COMPLEXITY_RULES || false,
     }),
   },
 };

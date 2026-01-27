@@ -2,11 +2,12 @@ import React, { useCallback, useRef } from 'react';
 import useStore from '@/AppBuilder/_stores/store';
 import Selecto from 'react-selecto';
 import './selecto.scss';
-import { RIGHT_SIDE_BAR_TAB } from '@/AppBuilder/RightSideBar/rightSidebarConstants';
 import { shallow } from 'zustand/shallow';
 import { findHighestLevelofSelection } from './Grid/gridUtils';
+import { useModuleContext } from '@/AppBuilder/_contexts/ModuleContext';
 
 export const EditorSelecto = () => {
+  const { moduleId } = useModuleContext();
   const setActiveRightSideBarTab = useStore((state) => state.setActiveRightSideBarTab);
   const setSelectedComponents = useStore((state) => state.setSelectedComponents);
   const getSelectedComponents = useStore((state) => state.getSelectedComponents, shallow);
@@ -16,7 +17,7 @@ export const EditorSelecto = () => {
   const filterSelectedComponentsByHighestLevel = (selectedIds) => {
     const highestLevelComponents = findHighestLevelofSelection(
       selectedIds.map((id) => {
-        const component = getComponentDefinition(id);
+        const component = getComponentDefinition(id, moduleId);
         return {
           ...component,
           id,
@@ -76,11 +77,22 @@ export const EditorSelecto = () => {
           ? [...getSelectedComponents().filter((id) => !allSelectedIds.includes(id)), ...allSelectedIds]
           : allSelectedIds;
 
-        setSelectedComponents(
-          !isCanvasSelectStartEndSame ? newSelection : filterSelectedComponentsByHighestLevel(newSelection)
-        );
-        if (e.isClick) {
-          setActiveRightSideBarTab(RIGHT_SIDE_BAR_TAB.CONFIGURATION);
+        const isCanvasModal =
+          getComponentDefinition(canvasStartId.current, moduleId)?.component?.component === 'Modal' ||
+          getComponentDefinition(canvasStartId.current, moduleId)?.component?.component === 'ModalV2';
+
+        const _selectedComponents = !isCanvasSelectStartEndSame
+          ? newSelection
+          : filterSelectedComponentsByHighestLevel(newSelection);
+
+        if (isCanvasModal) {
+          setSelectedComponents(
+            _selectedComponents.filter(
+              (id) => getComponentDefinition(id, moduleId)?.component?.parent === canvasStartId.current
+            )
+          );
+        } else {
+          setSelectedComponents(_selectedComponents);
         }
       }
       canvasStartId.current = null;
@@ -119,8 +131,8 @@ export const EditorSelecto = () => {
             setSelectedComponents(mergedArray);
           }
         }
-        setActiveRightSideBarTab(RIGHT_SIDE_BAR_TAB.CONFIGURATION);
       }
+
       return false;
     },
     [setSelectedComponents, setActiveRightSideBarTab, getSelectedComponents]

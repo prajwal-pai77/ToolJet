@@ -20,7 +20,16 @@ const CODE_EDITOR_TYPE = {
   tjdbHinter: TJDBCodeEditor,
 };
 
-const CodeHinter = ({ type = 'basic', initialValue, componentName, disabled, renderCopilot, ...restProps }) => {
+const CodeHinter = ({
+  type = 'basic',
+  initialValue,
+  componentName,
+  disabled,
+  renderCopilot,
+  setCodeEditorView,
+  helpText,
+  ...restProps
+}) => {
   const darkMode = localStorage.getItem('darkMode') === 'true';
 
   const [isOpen, setIsOpen] = React.useState(false);
@@ -58,21 +67,25 @@ const CodeHinter = ({ type = 'basic', initialValue, componentName, disabled, ren
   const RenderCodeEditor = CODE_EDITOR_TYPE[type];
 
   return (
-    <RenderCodeEditor
-      renderCopilot={renderCopilot}
-      type={type}
-      initialValue={initialValue}
-      darkMode={darkMode}
-      portalProps={{
-        isOpen,
-        setIsOpen,
-        handleTogglePopupExapand,
-        forceUpdate,
-      }}
-      componentName={componentName}
-      disabled={disabled}
-      {...restProps}
-    />
+    <>
+      <RenderCodeEditor
+        renderCopilot={renderCopilot}
+        type={type}
+        initialValue={initialValue}
+        darkMode={darkMode}
+        portalProps={{
+          isOpen,
+          setIsOpen,
+          handleTogglePopupExapand,
+          forceUpdate,
+        }}
+        componentName={componentName}
+        disabled={disabled}
+        setCodeEditorView={setCodeEditorView}
+        {...restProps}
+      />
+      {helpText && <span className="codehinter-helper-text">{helpText}</span>}
+    </>
   );
 };
 
@@ -85,7 +98,7 @@ const Portal = ({ children, ...restProps }) => {
 const PopupIcon = ({ callback, icon, tip, position, isMultiEditor = false, isQueryManager = false }) => {
   const size = 16;
   const topRef = isNumber(position?.height) ? Math.floor(position?.height) - 30 : 32;
-  let top = isMultiEditor ? 270 : topRef > 32 ? topRef : 0;
+  let top = topRef > 32 ? topRef : 0;
   // for query manager we allow the height of query manager to be dynamic, so we need to render the popup icon at the bottom of code editor
   const renderAtBottom = isQueryManager && (isMultiEditor || topRef > 32);
 

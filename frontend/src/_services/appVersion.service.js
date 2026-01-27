@@ -12,9 +12,12 @@ export const appVersionService = {
   autoSaveApp,
   saveAppVersionEventHandlers,
   createAppVersionEventHandler,
+  bulkCreateAppVersionEventHandlers,
   deleteAppVersionEventHandler,
   clonePage,
   findAllEventsWithSourceId,
+  cloneGroup,
+  createDraftVersion,
 };
 
 function getAll(appId) {
@@ -36,14 +39,17 @@ function promoteEnvironment(appId, versionId, currentEnvironmentId) {
   };
   return fetch(`${config.apiUrl}/v2/apps/${appId}/versions/${versionId}/promote`, requestOptions).then(handleResponse);
 }
-function getAppVersionData(appId, versionId) {
+function getAppVersionData(appId, versionId, mode) {
   const requestOptions = { method: 'GET', headers: authHeader(), credentials: 'include' };
-  return fetch(`${config.apiUrl}/v2/apps/${appId}/versions/${versionId}`, requestOptions).then(handleResponse);
+  return fetch(`${config.apiUrl}/v2/apps/${appId}/versions/${versionId}?mode=${mode}`, requestOptions).then(
+    handleResponse
+  );
 }
 
-function create(appId, versionName, versionFromId, currentEnvironmentId) {
+function create(appId, versionName, versionDescription, versionFromId, currentEnvironmentId) {
   const body = {
     versionName,
+    versionDescription,
     versionFromId,
     environmentId: currentEnvironmentId,
   };
@@ -55,6 +61,24 @@ function create(appId, versionName, versionFromId, currentEnvironmentId) {
     body: JSON.stringify(body),
   };
   return fetch(`${config.apiUrl}/apps/${appId}/versions`, requestOptions).then(handleResponse);
+}
+
+function createDraftVersion(appId, versionFromId, environmentId, versionDescription = '') {
+  const body = {
+    versionFromId,
+    environmentId,
+  };
+  if (versionDescription) {
+    body.versionDescription = versionDescription;
+  }
+
+  const requestOptions = {
+    method: 'POST',
+    headers: authHeader(),
+    credentials: 'include',
+    body: JSON.stringify(body),
+  };
+  return fetch(`${config.apiUrl}/apps/${appId}/draft-versions`, requestOptions).then(handleResponse);
 }
 
 function del(appId, versionId) {
@@ -71,6 +95,8 @@ function save(appId, versionId, values, isUserSwitchedVersion = false) {
   if (values.definition) body['definition'] = values.definition;
   if (values.name) body['name'] = values.name;
   if (values.diff) body['app_diff'] = values.diff;
+  if (values.description !== undefined && values.description !== null) body['description'] = values.description;
+  if (values.status) body['status'] = values.status;
 
   const requestOptions = {
     method: 'PUT',
@@ -139,7 +165,6 @@ function autoSaveApp(
     credentials: 'include',
     body: JSON.stringify(body),
   };
-
   const url = `${config.apiUrl}/v2/apps/${appId}/versions/${versionId}/${type ?? ''}`;
 
   return fetch(url, requestOptions).then(handleResponse);
@@ -174,6 +199,22 @@ function createAppVersionEventHandler(appId, versionId, event) {
   return fetch(`${config.apiUrl}/v2/apps/${appId}/versions/${versionId}/events`, requestOptions).then(handleResponse);
 }
 
+function bulkCreateAppVersionEventHandlers(appId, versionId, events) {
+  const body = {
+    events,
+  };
+
+  const requestOptions = {
+    method: 'POST',
+    headers: authHeader(),
+    credentials: 'include',
+    body: JSON.stringify(body),
+  };
+  return fetch(`${config.apiUrl}/v2/apps/${appId}/versions/${versionId}/events/bulk`, requestOptions).then(
+    handleResponse
+  );
+}
+
 function deleteAppVersionEventHandler(appId, versionId, eventId) {
   const requestOptions = {
     method: 'DELETE',
@@ -194,6 +235,18 @@ function clonePage(appId, versionId, pageId) {
   return fetch(`${config.apiUrl}/v2/apps/${appId}/versions/${versionId}/pages/${pageId}/clone`, requestOptions).then(
     handleResponse
   );
+}
+
+function cloneGroup(appId, versionId, pageId) {
+  const requestOptions = {
+    method: 'POST',
+    headers: authHeader(),
+    credentials: 'include',
+  };
+  return fetch(
+    `${config.apiUrl}/v2/apps/${appId}/versions/${versionId}/pages/${pageId}/clone-group`,
+    requestOptions
+  ).then(handleResponse);
 }
 
 function findAllEventsWithSourceId(appId, versionId, sourceId = undefined) {

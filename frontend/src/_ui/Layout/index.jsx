@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import useRouter from '@/_hooks/use-router';
-import Logo from '@assets/images/rocket.svg';
+import Logo from '@assets/images/tj-logo.svg';
 import Header from '../Header';
 import { authenticationService } from '@/_services';
 import { getPrivateRoute } from '@/_helpers/routes';
-import { ConfirmDialog } from '@/_components';
 import useGlobalDatasourceUnsavedChanges from '@/_hooks/useGlobalDatasourceUnsavedChanges';
 import './styles.scss';
 import { useLicenseStore } from '@/_stores/licenseStore';
@@ -14,6 +13,8 @@ import { retrieveWhiteLabelLogo, fetchWhiteLabelDetails } from '@white-label/whi
 import '../../_styles/left-sidebar.scss';
 import { hasBuilderRole } from '@/_helpers/utils';
 import { LeftNavSideBar } from '@/modules/common/components';
+import { useWhiteLabellingStore } from '@/_stores/whiteLabellingStore';
+import UnsavedChangesDialog from '@/modules/dataSources/components/DataSourceManager/UnsavedChangesDialog';
 
 function Layout({
   children,
@@ -24,8 +25,10 @@ function Layout({
   toggleCollapsibleSidebar = () => {},
 }) {
   const [licenseValid, setLicenseValid] = useState(false);
-  const [logo, setLogo] = useState(null);
+  const logo = useWhiteLabellingStore((state) => state.whiteLabelLogo);
+  const isWhiteLabellingDataLoading = useWhiteLabellingStore((state) => state.loadingWhiteLabelDetails);
   const router = useRouter();
+  const [licenseStatus, setLicenseStatus] = useState(null);
   const { featureAccess } = useLicenseStore(
     (state) => ({
       featureAccess: state.featureAccess,
@@ -79,11 +82,13 @@ function Layout({
 
   useEffect(() => {
     useLicenseStore.getState().actions.fetchFeatureAccess();
+    fetchWhiteLabelDetails(authenticationService?.currentSessionValue?.organization_id);
   }, []);
 
   useEffect(() => {
     let licenseValid = !featureAccess?.licenseStatus?.isExpired && featureAccess?.licenseStatus?.isLicenseValid;
     setLicenseValid(licenseValid);
+    setLicenseStatus(featureAccess?.licenseStatus);
   }, [featureAccess]);
 
   const currentUserValue = authenticationService.currentSessionValue;
@@ -97,36 +102,14 @@ function Layout({
     admin ||
     super_admin;
   const isAuthorizedForGDS = hasCommonPermissions || admin || super_admin;
-  fetchWhiteLabelDetails();
-
-  useEffect(() => {
-    const fetchLogo = async () => {
-      try {
-        const whiteLabelLogo = await retrieveWhiteLabelLogo();
-        setLogo(whiteLabelLogo);
-      } catch (error) {
-        console.error('Error fetching logo:', error);
-        setLogo(null);
-      }
-    };
-
-    fetchLogo();
-  }, []);
-
   const isBuilder = hasBuilderRole(authenticationService?.currentSessionValue?.role ?? {});
 
-  const {
-    checkForUnsavedChanges,
-    handleDiscardChanges,
-    handleSaveChanges,
-    handleContinueEditing,
-    unSavedModalVisible,
-    nextRoute,
-  } = useGlobalDatasourceUnsavedChanges();
+  const { checkForUnsavedChanges } = useGlobalDatasourceUnsavedChanges();
 
   const canCreateVariableOrConstant = () => {
     return authenticationService.currentSessionValue.user_permissions?.org_constant_c_r_u_d;
   };
+  const isEndUser = authenticationService.currentSessionValue?.role?.name === 'end-user';
 
   return (
     <div className="row m-auto">
@@ -135,10 +118,24 @@ function Layout({
           <div className="tj-leftsidebar-icon-wrap">
             <div className="application-brand" data-cy={`home-page-logo`}>
               <Link
-                to={getPrivateRoute('dashboard')}
+                to={isEndUser ? getPrivateRoute('dashboard') : getPrivateRoute('home')}
                 onClick={(event) => checkForUnsavedChanges(getPrivateRoute('dashboard'), event)}
               >
-                {logo ? <img src={logo} /> : <Logo />}
+                {isWhiteLabellingDataLoading ? (
+                  ''
+                ) : logo ? (
+                  <img
+                    width="26px"
+                    height="26px"
+                    src={logo}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null; // prevent infinite loop
+                      e.currentTarget.src = 'assets/images/logo-fallback.svg';
+                    }}
+                  />
+                ) : (
+                  <Logo />
+                )}
               </Link>
             </div>
             <LeftNavSideBar
@@ -162,22 +159,12 @@ function Layout({
           enableCollapsibleSidebar={enableCollapsibleSidebar}
           collapseSidebar={collapseSidebar}
           toggleCollapsibleSidebar={toggleCollapsibleSidebar}
+          licenseStatus={licenseStatus}
         />
-        <div style={{ paddingTop: 64 }}>{children}</div>
+        <div style={{ paddingTop: 48 }}>{children}</div>
       </div>
-      <ConfirmDialog
-        title={'Unsaved Changes'}
-        show={unSavedModalVisible}
-        message={'Datasource has unsaved changes. Are you sure you want to discard them?'}
-        onConfirm={() => handleDiscardChanges(nextRoute)}
-        onCancel={handleSaveChanges}
-        confirmButtonText={'Discard'}
-        cancelButtonText={'Save changes'}
-        confirmButtonType="dangerPrimary"
-        cancelButtonType="tertiary"
-        backdropClassName="datasource-selection-confirm-backdrop"
-        onCloseIconClick={handleContinueEditing}
-      />
+
+      <UnsavedChangesDialog />
     </div>
   );
 }

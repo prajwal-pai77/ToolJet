@@ -3,6 +3,7 @@ import { computeCoercion, getCurrentNodeType, hasDeepChildren, resolveReferences
 import CodeHinter from '.';
 import { copyToClipboard } from '@/_helpers/appUtils';
 import { Alert } from '@/_ui/Alert/Alert';
+import { Button } from '@/components/ui/Button/Button';
 import _, { isEmpty } from 'lodash';
 import { handleCircularStructureToJSON, hasCircularDependency, verifyConstant } from '@/_helpers/utils';
 import Popover from 'react-bootstrap/Popover';
@@ -13,45 +14,78 @@ import { reservedKeywordReplacer } from '@/_lib/reserved-keyword-replacer';
 import useStore from '@/AppBuilder/_stores/store';
 import { shallow } from 'zustand/shallow';
 import { Overlay } from 'react-bootstrap';
+import { ToolTip } from '@/_components/ToolTip';
+import { useModuleContext } from '@/AppBuilder/_contexts/ModuleContext';
+
+import { findDefault } from '../_utils/component-properties-validation';
+import FixWithAi from './FixWithAi';
 
 const sanitizeLargeDataset = (data, callback) => {
   const SIZE_LIMIT_KB = 5 * 1024; // 5 KB in bytes
 
   const estimateSizeOfObject = (object) => {
-    let bytes = 0;
+    const visited = new Set();
 
-    function getSizeOfPrimitive(value) {
-      switch (typeof value) {
-        case 'boolean':
-          return 4;
-        case 'number':
-          return 8;
-        case 'string':
-          return value.length * 2;
-        case 'object':
-          if (value === null) {
-            return 0;
-          } else if (Array.isArray(value)) {
-            return value.length * getSizeOfPrimitive(value[0]);
-          } else {
-            return estimateSizeOfObject(value);
+    function sizeOf(obj) {
+      if (obj === null || typeof obj !== 'object') return 0;
+      if (visited.has(obj)) return 0;
+      visited.add(obj);
+
+      let bytes = 0;
+
+      for (let key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+          bytes += key.length * 2;
+
+          const value = obj[key];
+          switch (typeof value) {
+            case 'boolean':
+              bytes += 4;
+              break;
+            case 'number':
+              bytes += 8;
+              break;
+            case 'string':
+              bytes += value.length * 2;
+              break;
+            case 'object':
+              if (Array.isArray(value)) {
+                bytes += value.reduce((acc, el) => acc + sizeOf(el), 0);
+              } else {
+                bytes += sizeOf(value);
+              }
+              break;
           }
-        default:
-          return 0;
+        }
       }
+
+      return bytes;
     }
 
-    for (let key in object) {
-      if (object.hasOwnProperty(key)) {
-        bytes += key.length * 2; // key size
-        bytes += getSizeOfPrimitive(object[key]);
-      }
-    }
-
-    return bytes;
+    return sizeOf(object);
   };
 
+  function trimTo5KB(str) {
+    let bytes = 0;
+    let result = '';
+
+    for (let i = 0; i < str.length; i++) {
+      const charCode = str.charCodeAt(i);
+      const charBytes = charCode <= 0x7f ? 1 : 2; // basic approximation for UTF-16
+
+      if (bytes + charBytes > SIZE_LIMIT_KB) {
+        break;
+      }
+
+      result += str[i];
+      bytes += charBytes;
+    }
+
+    return result + '...';
+  }
+
   const sanitize = (input) => {
+    if (typeof input === 'string') return trimTo5KB(input);
     if (typeof input !== 'object' || input === null) return input;
 
     if (Array.isArray(input)) {
@@ -90,12 +124,14 @@ export const PreviewBox = ({
   isWorkspaceVariable,
   validationFn,
 }) => {
+  const { moduleId } = useModuleContext();
   const [resolvedValue, setResolvedValue] = useState('');
   const [error, setError] = useState(null);
   const [coersionData, setCoersionData] = useState(null);
   const [largeDataset, setLargeDataset] = useState(false);
-  const globals = useStore((state) => state.getAllExposedValues().constants || {}, shallow);
+  const globals = useStore((state) => state.getAllExposedValues(moduleId).constants || {}, shallow);
   const secrets = useStore((state) => state.getSecrets(), shallow);
+  const globalServerConstantsRegex = /\{\{.*globals\.server.*\}\}/;
 
   const getPreviewContent = (content, type) => {
     if (content === undefined || content === null) return currentValue;
@@ -118,11 +154,11 @@ export const PreviewBox = ({
   let previewContent = resolvedValue;
   let isGlobalConstant = currentValue && currentValue.includes('{{constants.');
   let isSecretConstant = currentValue && currentValue.includes('{{secrets.');
+  const isServerConstant = currentValue && currentValue.match(globalServerConstantsRegex);
   let invalidConstants = null;
   let undefinedError = null;
   if (isGlobalConstant || isSecretConstant) {
     invalidConstants = verifyConstant(currentValue, globals, secrets);
-    console.log('invalidConstants', invalidConstants);
   }
   if (invalidConstants?.length) {
     undefinedError = { type: 'Invalid constants' };
@@ -140,7 +176,7 @@ export const PreviewBox = ({
   useEffect(() => {
     if (error) {
       setErrorStateActive(true);
-      setErrorMessage(error.message);
+      setErrorMessage(error);
     } else {
       setErrorStateActive(false);
       setErrorMessage(null);
@@ -155,6 +191,8 @@ export const PreviewBox = ({
       customVariables,
       validationFn
     );
+
+    const completeErrMessage = Array.isArray(_error) ? _error.join('.') : _error;
 
     const resolvedValue = typeof rawResolvedValue === 'function' ? undefined : rawResolvedValue;
 
@@ -182,7 +220,7 @@ export const PreviewBox = ({
       setError(null);
     } else if (!valid && !newValue && !resolvedValue && !isSecretError) {
       const err = !error ? `Invalid value for ${validationSchema?.schema?.type}` : `${_error}`;
-      setError({ message: err, value: resolvedValue, type: 'Invalid' });
+      setError({ message: err, value: resolvedValue, type: 'Invalid', completeErrorMessage: completeErrMessage });
     } else {
       const jsErrorType = isSecretError
         ? 'Error'
@@ -197,13 +235,18 @@ export const PreviewBox = ({
       const errValue = ifCoersionErrorHasCircularDependency(_resolveValue);
 
       setError({
-        message: isSecretError ? 'secrets cannot be used in apps' : _error,
+        message: isServerConstant
+          ? 'Server variables cannot be used in apps'
+          : isSecretError
+          ? 'secrets cannot be used in apps'
+          : _error,
         value: isSecretError
           ? 'Undefined'
           : jsErrorType === 'Invalid'
           ? JSON.stringify(errValue, reservedKeywordReplacer)
           : resolvedValue,
         type: isSecretError ? 'Error' : jsErrorType,
+        completeErrorMessage: completeErrMessage,
       });
       setCoersionData(null);
     }
@@ -222,6 +265,7 @@ export const PreviewBox = ({
         isWorkspaceVariable={isWorkspaceVariable}
         isSecretConstant={isSecretConstant || false}
         isLargeDataset={largeDataset}
+        isServerConstant={isServerConstant}
       />
       <CodeHinter.PopupIcon
         callback={() => copyToClipboard(error ? error?.value : content)}
@@ -240,8 +284,14 @@ const RenderResolvedValue = ({
   withValidation,
   isWorkspaceVariable,
   isSecretConstant = false,
+  isServerConstant = false,
   isLargeDataset,
 }) => {
+  const isServerSideGlobalResolveEnabled = useStore(
+    (state) => !!state?.license?.featureAccess?.serverSideGlobalResolve,
+    shallow
+  );
+
   const computeCoersionPreview = (resolvedValue, coersionData) => {
     if (coersionData?.typeBeforeCoercion === coersionData?.typeAfterCoercion) return resolvedValue;
 
@@ -264,7 +314,11 @@ const RenderResolvedValue = ({
       }`
     : previewType;
 
-  const previewContent = isSecretConstant
+  const previewContent = isServerConstant
+    ? isServerSideGlobalResolveEnabled
+      ? 'Server variables would be resolved at runtime'
+      : 'Server variables are only available in paid plans'
+    : isSecretConstant
     ? 'Values of secret constants are hidden'
     : !withValidation
     ? resolvedValue
@@ -283,6 +337,16 @@ const RenderResolvedValue = ({
   );
 };
 
+function FixIssueTooltipContent() {
+  return (
+    <>
+      <h5 className="tw-font-medium">Auto-fix</h5>
+
+      <p className="tw-text-base tw-mb-0">Diagnose and resolve errors instantly to keep your apps running smoothly</p>
+    </>
+  );
+}
+
 const PreviewContainer = ({
   children,
   isFocused,
@@ -291,21 +355,122 @@ const PreviewContainer = ({
   isPortalOpen,
   previewRef,
   showPreview,
+  onAiSuggestionAccept,
   ...restProps
 }) => {
-  const { validationSchema, isWorkspaceVariable, errorStateActive, previewPlacement, validationFn } = restProps;
+  const {
+    validationSchema,
+    isWorkspaceVariable,
+    errorStateActive,
+    previewPlacement,
+    validationFn,
+    componentId,
+    paramName,
+    fieldMeta,
+    setIsFocused,
+    currentValue,
+  } = restProps;
 
-  const [errorMessage, setErrorMessage] = useState('');
+  const aiFeaturesEnabled = useStore((state) => state.ai?.aiFeaturesEnabled ?? false);
+  const fetchErrorFixUsingAi = useStore((state) => state.fetchErrorFixUsingAi);
+  const clearChatHistory = useStore((state) => state.clearChatHistory);
+  const componentDefinition = useStore((state) => state.getComponentDefinition(componentId), shallow); // TODO: check if moduleId needs to be passed here
 
-  const typeofError = getCurrentNodeType(errorMessage);
+  const componentName = componentDefinition?.component?.name;
+  const componentKey = `${componentName} - ${fieldMeta?.displayName}`;
 
-  const errorMsg = typeofError === 'Array' ? errorMessage[0] : errorMessage;
+  const chatList = useStore((state) => state.fixWithAiSlice?.[componentId]?.[componentKey]?.chatHistory ?? []);
+
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const [popoverToShow, setPopoverToShow] = useState('preview'); // preview | fixWithAI
+
+  const errMsg = errorMessage?.message ?? null;
+
+  const typeofError = getCurrentNodeType(errMsg);
+
+  const errorMsg = typeofError === 'Array' ? errMsg[0] : errMsg;
 
   const darkMode = localStorage.getItem('darkMode') === 'true';
+
+  useEffect(() => {
+    !showPreview && setPopoverToShow('preview');
+  }, [showPreview]);
+
+  useEffect(() => {
+    setPopoverToShow('preview');
+
+    if (chatList?.length) {
+      clearChatHistory(componentId, componentKey);
+    }
+  }, [currentValue]);
+
+  const fetchFixUsingAi = () => {
+    const defaultValue = validationSchema?.defaultValue
+      ? validationSchema?.defaultValue
+      : validationSchema
+      ? findDefault(validationSchema?.schema ?? {}, errorMessage?.value)
+      : undefined;
+
+    const errorData = {
+      key: componentKey,
+      componentId: componentId,
+      message: errorMessage?.completeErrorMessage,
+      error: {
+        resolvedProperty: { [paramName]: errorMessage?.value },
+        effectiveProperty: { [paramName]: defaultValue },
+        componentId,
+      },
+    };
+
+    fetchErrorFixUsingAi(errorData, {
+      componentDisplayName:
+        componentDefinition?.component?.displayName ?? componentDefinition?.component?.component ?? componentName,
+      errorPropertyDisplayName: fieldMeta?.displayName,
+      customErrMessage: errorMessage?.message,
+    });
+  };
+
+  const handleFixErrorWithAI = () => {
+    setPopoverToShow('fixWithAI');
+
+    if (!componentId || chatList?.length) {
+      return;
+    }
+
+    fetchFixUsingAi();
+  };
+
+  const fixWithAIPopover = (
+    <Popover
+      bsPrefix="fix-with-ai-popover"
+      id="popover-basic"
+      className={`${darkMode && 'dark-theme'} tw-z-[9999] tw-w-96`}
+      onMouseEnter={() => setCursorInsidePreview(true)}
+      onMouseLeave={() => setCursorInsidePreview(false)}
+    >
+      <Popover.Body
+        style={{
+          border: '1px solid var(--slate6)',
+          padding: 0,
+          boxShadow: ' 0px 4px 8px 0px #3032331A, 0px 0px 1px 0px #3032330D',
+        }}
+      >
+        <FixWithAi
+          componentId={componentId}
+          componentKey={componentKey}
+          onApplyFix={onAiSuggestionAccept}
+          onRetry={fetchFixUsingAi}
+          onClose={() => setIsFocused(false)}
+        />
+      </Popover.Body>
+    </Popover>
+  );
+
   const popover = (
     <Popover
       bsPrefix="codehinter-preview-popover"
-      id="popover-basic"
+      id="codehinter-preview-box-popover"
       className={`${darkMode && 'dark-theme'}`}
       style={{
         zIndex: 1400,
@@ -336,6 +501,24 @@ const PreviewContainer = ({
                 <div className="d-flex align-items-center">
                   <div className="">{errorMsg !== 'null' ? errorMsg : 'Invalid'}</div>
                 </div>
+
+                {aiFeaturesEnabled && (
+                  <ToolTip
+                    placement="left"
+                    message={<FixIssueTooltipContent />}
+                    tooltipClassName="[&_.tooltip-inner]:tw-text-left [&_.tooltip-inner]:tw-p-3"
+                  >
+                    <Button
+                      size="medium"
+                      variant="outline"
+                      leadingIcon="tooljetai"
+                      className="mt-2"
+                      onClick={handleFixErrorWithAI}
+                    >
+                      Auto-fix
+                    </Button>
+                  </ToolTip>
+                )}
               </Alert>
             </div>
           )}
@@ -423,10 +606,12 @@ const PreviewContainer = ({
     <>
       {!isPortalOpen && (
         <Overlay
-          placement="left"
+          placement={previewPlacement || 'left'}
           {...(previewRef?.current ? { target: previewRef.current } : {})}
           show={showPreview}
           rootClose
+          shouldUpdatePosition={true}
+          container={document.body}
           popperConfig={{
             modifiers: [
               {
@@ -441,6 +626,7 @@ const PreviewContainer = ({
               {
                 name: 'preventOverflow',
                 options: {
+                  enabled: true,
                   boundary: 'viewport',
                   altAxis: true,
                   tether: false,
@@ -449,13 +635,62 @@ const PreviewContainer = ({
               {
                 name: 'offset',
                 options: {
-                  offset: [33, 15],
+                  offset: [0, 3],
+                },
+              },
+              {
+                name: 'detectViewportOverflowObserver',
+                enabled: true,
+                phase: 'write',
+                effect: ({ state, instance }) => {
+                  const popperEl = state?.elements?.popper;
+
+                  if (!popperEl || typeof IntersectionObserver === 'undefined') return;
+
+                  let rafId = null;
+
+                  const io = new IntersectionObserver(
+                    (entries) => {
+                      const ent = entries[0];
+                      if (!ent) return;
+
+                      // intersectionRatio < 1 => partially/fully out of viewport
+                      if (ent.intersectionRatio < 1) {
+                        if (rafId) return;
+
+                        rafId = requestAnimationFrame(() => {
+                          try {
+                            instance.update();
+                          } catch (e) {
+                            /* error */
+                          } finally {
+                            rafId = null;
+                          }
+                        });
+                      }
+                    },
+                    { threshold: [0, 0.01, 0.5, 1] }
+                  );
+
+                  io.observe(popperEl);
+
+                  return () => {
+                    io.disconnect();
+                    if (rafId) cancelAnimationFrame(rafId);
+                  };
                 },
               },
             ],
+            onFirstUpdate: (state) => {
+              // Force position update on first render
+              // This is done to avoid scroll issue
+              if (state.elements.popper) {
+                state.elements.popper.style.position = 'fixed';
+              }
+            },
           }}
         >
-          {(props) => React.cloneElement(popover, props)}
+          {(props) => React.cloneElement(popoverToShow === 'fixWithAI' ? fixWithAIPopover : popover, props)}
         </Overlay>
       )}
 
@@ -465,7 +700,14 @@ const PreviewContainer = ({
 };
 
 const PreviewCodeBlock = ({ code, isExpectValue = false, isLargeDataset }) => {
-  let preview = code && code.trim ? code?.trim() : `${code}`;
+  let preview;
+  if (typeof code === 'string') {
+    preview = code.trim();
+  } else if (typeof code === 'symbol') {
+    preview = code.toString();
+  } else {
+    preview = String(code);
+  }
 
   const shouldTrim = preview.length > 35;
   let showJSONTree = false;

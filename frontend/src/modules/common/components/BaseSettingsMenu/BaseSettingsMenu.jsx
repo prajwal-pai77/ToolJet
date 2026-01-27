@@ -1,4 +1,3 @@
-// src/modules/common/components/BaseSettingsMenu/BaseSettingsMenu.jsx
 import React, { useState } from 'react';
 import cx from 'classnames';
 import { Link } from 'react-router-dom';
@@ -10,6 +9,7 @@ import SolidIcon from '@/_ui/Icon/SolidIcons';
 import { useAppDataStore } from '@/_stores/appDataStore';
 import { shallow } from 'zustand/shallow';
 import { checkIfToolJetCloud } from '@/_helpers/utils';
+import { fetchEdition } from '@/modules/common/helpers/utils';
 
 function BaseSettingsMenu({
   darkMode,
@@ -21,6 +21,8 @@ function BaseSettingsMenu({
     hideMarketPlaceMenuItem: false,
   },
 }) {
+  const edition = fetchEdition();
+  const isEEorCloud = edition === 'ee' || edition === 'cloud';
   const [showOverlay, setShowOverlay] = useState(false);
   const { tooljetVersion } = useAppDataStore(
     (state) => ({
@@ -35,6 +37,8 @@ function BaseSettingsMenu({
   const admin = currentUserValue?.admin;
   const superAdmin = currentUserValue?.super_admin;
   const marketplaceEnabled = admin && !options.hideMarketPlaceMenuItem;
+  const isBuilder = !!currentUserValue?.user_permissions?.is_builder;
+  const canAccessWorkspaceSettings = !!admin || (isEEorCloud && isBuilder);
   const isValidUrl = (url) => {
     try {
       new URL(url);
@@ -63,6 +67,12 @@ function BaseSettingsMenu({
       });
   }
 
+  const getWorkspaceSettingsRoute = () => {
+    if (isBuilder && isEEorCloud) {
+      return getPrivateRoute('workspace_settings_builder');
+    }
+    return getPrivateRoute('workspace_settings');
+  };
   const getOverlay = () => {
     // Get the extension items with the required context
     const preWorkspaceContent = getPreWorkspaceItems({
@@ -77,9 +87,13 @@ function BaseSettingsMenu({
       featureAccess,
       checkForUnsavedChanges,
     });
-
+    const currentVersion = localStorage.getItem('currentVersion');
     return (
       <div className={`settings-card tj-text card ${darkMode ? 'dark-theme' : ''}`}>
+        <div className="tw-px-2.5 tw-py-2 tw-text-xs tw-font-light tw-text-text-placeholder" data-cy="version-label">
+          <span>Version {currentVersion}</span>
+        </div>
+        <div className="divider" />
         {/* Marketplace section */}
         {marketplaceEnabled && tooljetVersion && !checkIfToolJetCloud(tooljetVersion) && (
           <Link
@@ -101,11 +115,16 @@ function BaseSettingsMenu({
         {/* Super Admin Settings */}
         {superAdmin && midMenuContent}
 
+        {/* Specifically for Cloud Edition */}
+        {edition === 'cloud' && admin && !superAdmin && midMenuContent}
+
         {/* Admin section - Workspace settings */}
-        {admin && (
+        {/* Admin and builder both can access workspace setting.
+            Builder can access for themes.  */}
+        {canAccessWorkspaceSettings && (
           <Link
-            onClick={(event) => checkForUnsavedChanges(getPrivateRoute('workspace_settings'), event)}
-            to={getPrivateRoute('workspace_settings')}
+            onClick={(event) => checkForUnsavedChanges(getWorkspaceSettingsRoute(), event)}
+            to={getWorkspaceSettingsRoute()}
             className="dropdown-item tj-text-xsm"
             data-cy="workspace-settings"
           >

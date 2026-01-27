@@ -1,15 +1,15 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { User } from '@entities/user.entity';
-import { UserRepository } from '@modules/users/repository';
+import { UserRepository } from '@modules/users/repositories/repository';
 import { OrganizationUser } from '../../entities/organization_user.entity';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TrialUserDto } from '@modules/onboarding/dto/user.dto';
 import { LicenseCountsService } from '../licensing/services/count.service';
-import { LICENSE_TRIAL_API } from '../licensing/constants';
+import { LICENSE_TRIAL_API, ORGANIZATION_INSTANCE_KEY } from '../licensing/constants';
 import got from 'got/dist/source';
 import { HttpException } from '@nestjs/common';
-import { fullName, generateNextNameAndSlug, generateOrgInviteURL } from 'src/helpers/utils.helper';
+import { fullName, generateNextNameAndSlug, generateOrgInviteURL, getTooljetEdition } from 'src/helpers/utils.helper';
 import { NotAcceptableException } from '@nestjs/common';
 import { Organization } from '../../entities/organization.entity';
 import { EntityManager } from 'typeorm';
@@ -17,6 +17,7 @@ import {
   getUserStatusAndSource,
   lifecycleEvents,
   SOURCE,
+  USER_STATUS,
   WORKSPACE_USER_STATUS,
   WORKSPACE_USER_SOURCE,
 } from '@modules/users/constants/lifecycle';
@@ -40,7 +41,7 @@ import { UserOnboardingDetails } from './types';
 import { OnboardingStatus } from './constants';
 import { IOnboardingUtilService } from './interfaces/IUtilService';
 import { SetupOrganizationsUtilService } from '@modules/setup-organization/util.service';
-const uuid = require('uuid');
+import * as uuid from 'uuid';
 
 @Injectable()
 export class OnboardingUtilService implements IOnboardingUtilService {
@@ -72,7 +73,10 @@ export class OnboardingUtilService implements IOnboardingUtilService {
     const otherData = { companySize, role, phoneNumber };
 
     await dbTransactionWrap(async (manager: EntityManager) => {
-      const { editor, viewer } = await this.licenseCountsService.fetchTotalViewerEditorCount(manager);
+      const { editor, viewer } = await this.licenseCountsService.fetchTotalViewerEditorCount(
+        ORGANIZATION_INSTANCE_KEY,
+        manager
+      );
 
       const body = {
         hostname,
@@ -151,6 +155,7 @@ export class OnboardingUtilService implements IOnboardingUtilService {
     signingUpOrganization: Organization,
     userParams: { firstName: string; lastName: string; password: string },
     redirectTo?: string,
+    defaultWorkspace?: Organization,
     manager?: EntityManager
   ) => {
     return dbTransactionWrap(async (manager: EntityManager) => {
@@ -206,7 +211,7 @@ export class OnboardingUtilService implements IOnboardingUtilService {
             Response: Add the user to the workspace and send the organization and account invite again (eg: /invitations/<>/workspaces/<>).
           */
             organizationUser = await this.addUserToTheWorkspace(existingUser, signingUpOrganization, manager);
-            await this.licenseUserService.validateUser(manager);
+            await this.licenseUserService.validateUser(manager, organizationId);
           }
           this.eventEmitter.emit('emailEvent', {
             type: EMAIL_EVENTS.SEND_WELCOME_EMAIL,
@@ -237,7 +242,7 @@ export class OnboardingUtilService implements IOnboardingUtilService {
           } else {
             /* Create new organizations_user entry and send an invite */
             organizationUser = await this.addUserToTheWorkspace(existingUser, signingUpOrganization, manager);
-            await this.licenseUserService.validateUser(manager);
+            await this.licenseUserService.validateUser(manager, organizationId);
           }
           return this.sendOrgInvite(
             { email: existingUser.email, firstName: existingUser.firstName },
@@ -251,11 +256,25 @@ export class OnboardingUtilService implements IOnboardingUtilService {
         case hasWorkspaceInviteButUserWantsInstanceSignup: {
           const firstTimeSignup = ![SOURCE.SIGNUP, SOURCE.WORKSPACE_SIGNUP].includes(existingUser.source as SOURCE);
           if (firstTimeSignup) {
+            if (defaultWorkspace) {
+              return this.updateExistingUserDefaultWorkspace(
+                {
+                  password,
+                  firstName,
+                  lastName,
+                },
+                existingUser,
+                defaultWorkspace,
+                manager
+              );
+            }
+
             /* Invite user doing instance signup. So reset name fields and set password */
             let defaultOrganizationId = existingUser.defaultOrganizationId;
             const isPersonalWorkspaceAllowed =
               (await this.instanceSettingsUtilService.getSettings(INSTANCE_USER_SETTINGS.ALLOW_PERSONAL_WORKSPACE)) ===
               'true';
+
             if (!existingUser.defaultOrganizationId && isPersonalWorkspaceAllowed) {
               const personalWorkspaces = await this.organizationUsersUtilService.personalWorkspaces(existingUser.id);
               if (personalWorkspaces.length) {
@@ -263,7 +282,7 @@ export class OnboardingUtilService implements IOnboardingUtilService {
               } else {
                 /* Create a personal workspace for the user */
                 const { name, slug } = generateNextNameAndSlug('My workspace');
-                const defaultOrganization = await this.organizationRepository.createOne(name, slug, manager);
+                const defaultOrganization = await this.organizationRepository.createOne({ name, slug }, manager);
                 defaultOrganizationId = defaultOrganization.id;
                 await this.organizationUserRepository.createOne(existingUser, defaultOrganization, true, manager);
               }
@@ -272,7 +291,6 @@ export class OnboardingUtilService implements IOnboardingUtilService {
                 userId: existingUser.id,
               });
             }
-
             await this.userRepository.updateOne(
               existingUser.id,
               {
@@ -285,7 +303,7 @@ export class OnboardingUtilService implements IOnboardingUtilService {
               manager
             );
           }
-          await this.licenseUserService.validateUser(manager);
+          await this.licenseUserService.validateUser(manager, organizationId);
           this.eventEmitter.emit('emailEvent', {
             type: EMAIL_EVENTS.SEND_WELCOME_EMAIL,
             payload: {
@@ -299,7 +317,9 @@ export class OnboardingUtilService implements IOnboardingUtilService {
           return {};
         }
         case isUserAlreadyExisted: {
-          const errorMessage = organizationId ? 'User already exists in the workspace.' : 'Email already exists.';
+          const errorMessage = organizationId
+            ? 'User with this email already exists in one or more workspaces.'
+            : 'Email already exists.';
           throw new NotAcceptableException(errorMessage);
         }
         default:
@@ -381,12 +401,13 @@ export class OnboardingUtilService implements IOnboardingUtilService {
     }
   };
 
-  createUserOrPersonalWorkspace = async (
+  createUserInWorkspace = async (
     userParams: { email: string; password: string; firstName: string; lastName: string },
     existingUser: User,
     signingUpOrganization: Organization,
     redirectTo?: string,
-    manager?: EntityManager
+    manager?: EntityManager,
+    response?: any
   ) => {
     return await dbTransactionWrap(async (manager: EntityManager) => {
       const { email, password, firstName, lastName } = userParams;
@@ -395,14 +416,8 @@ export class OnboardingUtilService implements IOnboardingUtilService {
         (await this.instanceSettingsUtilService.getSettings(INSTANCE_USER_SETTINGS.ALLOW_PERSONAL_WORKSPACE)) ===
         'true';
 
-      let personalWorkspace: Organization;
-      if (isPersonalWorkspaceEnabled) {
-        const { name, slug } = generateNextNameAndSlug('My workspace');
-        personalWorkspace = await this.setupOrganizationsUtilService.create(name, slug, null, manager);
-      }
-      const organizationRole = personalWorkspace ? USER_ROLE.ADMIN : USER_ROLE.END_USER;
-
-      const organizationId = personalWorkspace ? personalWorkspace.id : signingUpOrganization.id;
+      const organizationRole = USER_ROLE.END_USER;
+      const organizationId = signingUpOrganization.id;
       /* Create the user or attach user groups to the user */
       const lifeCycleParms = signingUpOrganization
         ? getUserStatusAndSource(lifecycleEvents.USER_WORKSPACE_SIGN_UP)
@@ -423,11 +438,29 @@ export class OnboardingUtilService implements IOnboardingUtilService {
         manager,
         !isPersonalWorkspaceEnabled
       );
-
-      if (personalWorkspace) {
-        await this.organizationUserRepository.createOne(user, personalWorkspace, true, manager);
+      this.eventEmitter.emit('CRM.Push', {
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+      });
+      
+      // Auto-activate users for non-cloud editions (skip email verification)
+      const edition = getTooljetEdition();
+      const isCloudEdition = edition === 'cloud';
+      if (!isCloudEdition && user.status === USER_STATUS.INVITED) {
+        await this.userRepository.updateOne(
+          user.id,
+          {
+            status: USER_STATUS.ACTIVE,
+            invitationToken: null,
+          },
+          manager
+        );
+        user.status = USER_STATUS.ACTIVE;
+        user.invitationToken = null;
       }
-
+      
       if (signingUpOrganization) {
         /* Attach the user and user groups to the organization */
         const organizationUser = await this.organizationUserRepository.createOne(
@@ -437,33 +470,43 @@ export class OnboardingUtilService implements IOnboardingUtilService {
           manager,
           WORKSPACE_USER_SOURCE.SIGNUP
         );
-
-        if (personalWorkspace) {
-          /* if the personal workspace is enabled for newly created users -> 
-          attach a role in the signing up workspace 
-          *This part will only run for user who is new to the instance and workspace at the same time
-          */
-          await this.rolesUtilService.addUserRole(
-            signingUpOrganization.id,
-            { role: USER_ROLE.END_USER, userId: user.id },
+        
+        // Auto-activate organization user for non-cloud editions
+        if (!isCloudEdition && organizationUser.status === WORKSPACE_USER_STATUS.INVITED) {
+          await this.organizationUsersUtilService.activateOrganization(organizationUser, manager);
+        }
+        
+        await this.licenseUserService.validateUser(manager, organizationId);
+        
+        // For non-cloud editions, return login payload to auto-login user
+        if (!isCloudEdition && response) {
+          return await this.sessionUtilService.generateLoginResultPayload(
+            response,
+            user,
+            signingUpOrganization,
+            false,
+            true,
+            null,
             manager
           );
         }
-
-        await this.licenseUserService.validateUser(manager);
-        this.eventEmitter.emit('emailEvent', {
-          type: EMAIL_EVENTS.SEND_WELCOME_EMAIL,
-          payload: {
-            to: user.email,
-            name: user.firstName,
-            invitationtoken: user.invitationToken,
-            organizationInvitationToken: organizationUser.invitationToken,
-            organizationId: signingUpOrganization.id,
-            organizationName: signingUpOrganization.name,
-            sender: null,
-            redirectTo: redirectTo,
-          },
-        });
+        
+        // Only send verification email for cloud edition
+        if (isCloudEdition) {
+          this.eventEmitter.emit('emailEvent', {
+            type: EMAIL_EVENTS.SEND_WELCOME_EMAIL,
+            payload: {
+              to: user.email,
+              name: user.firstName,
+              invitationtoken: user.invitationToken,
+              organizationInvitationToken: organizationUser.invitationToken,
+              organizationId: signingUpOrganization.id,
+              organizationName: signingUpOrganization.name,
+              sender: null,
+              redirectTo: redirectTo,
+            },
+          });
+        }
         // this.eventEmitter.emit(
         //   'auditLogEntry',
         //   {
@@ -478,15 +521,57 @@ export class OnboardingUtilService implements IOnboardingUtilService {
         // );
         return {};
       } else {
-        await this.licenseUserService.validateUser(manager);
-        this.eventEmitter.emit('emailEvent', {
-          type: EMAIL_EVENTS.SEND_WELCOME_EMAIL,
-          payload: {
-            to: user.email,
-            name: user.firstName,
-            invitationtoken: user.invitationToken,
-          },
-        });
+        // Auto-activate users for non-cloud editions (skip email verification)
+        const edition = getTooljetEdition();
+        const isCloudEdition = edition === 'cloud';
+        if (!isCloudEdition && user.status === USER_STATUS.INVITED) {
+          await this.userRepository.updateOne(
+            user.id,
+            {
+              status: USER_STATUS.ACTIVE,
+              invitationToken: null,
+            },
+            manager
+          );
+          user.status = USER_STATUS.ACTIVE;
+          user.invitationToken = null;
+        }
+        
+        // Use user's default organization ID if signingUpOrganization is null
+        const orgIdForValidation = user.defaultOrganizationId || organizationId;
+        if (orgIdForValidation) {
+          await this.licenseUserService.validateUser(manager, orgIdForValidation);
+        }
+
+        // For non-cloud editions, return login payload to auto-login user
+        if (!isCloudEdition && response) {
+          console.log('Attempting auto-login session generation for default org');
+          const userOrg = await this.organizationRepository.get(user.defaultOrganizationId);
+          if (!userOrg) console.log('WARNING: userOrg not found for defaultOrganizationId:', user.defaultOrganizationId);
+          
+          return await this.sessionUtilService.generateLoginResultPayload(
+            response,
+            user,
+            userOrg,
+            false,
+            true,
+            null,
+            manager
+          );
+        }
+
+        
+        // Only send verification email for cloud edition
+        if (isCloudEdition) {
+          this.eventEmitter.emit('emailEvent', {
+            type: EMAIL_EVENTS.SEND_WELCOME_EMAIL,
+            payload: {
+              to: user.email,
+              name: user.firstName,
+              invitationtoken: user.invitationToken,
+            },
+          });
+        }
 
         // this.eventEmitter.emit(
         //   'auditLogEntry',
@@ -604,4 +689,167 @@ export class OnboardingUtilService implements IOnboardingUtilService {
       manager
     );
   }
+
+  createUserInDefaultWorkspace = async (
+    userParams: { email: string; password: string; firstName: string; lastName: string },
+    defaultWorkspace: Organization,
+    redirectTo?: string,
+    manager?: EntityManager,
+    response?: any
+  ) => {
+    return await dbTransactionWrap(async (manager: EntityManager) => {
+      const { email, password, firstName, lastName } = userParams;
+
+      if (!defaultWorkspace) {
+        throw new Error('No default workspace found in the instance');
+      }
+
+      // Create user with end-user role in default workspace
+      const lifeCycleParms = getUserStatusAndSource(lifecycleEvents.USER_SIGN_UP);
+
+      const user = await this.create(
+        {
+          email,
+          password,
+          ...(firstName && { firstName }),
+          ...(lastName && { lastName }),
+          ...lifeCycleParms,
+        },
+        defaultWorkspace.id,
+        USER_ROLE.END_USER,
+        null,
+        true,
+        null,
+        manager,
+        false
+      );
+
+      // Create organization user entry
+      const organizationUser = await this.organizationUserRepository.createOne(
+        user,
+        defaultWorkspace,
+        true,
+        manager,
+        WORKSPACE_USER_SOURCE.SIGNUP
+      );
+
+      // Auto-activate users for non-cloud editions (skip email verification)
+      const edition = getTooljetEdition();
+      const isCloudEdition = edition === 'cloud';
+      if (!isCloudEdition && user.status === USER_STATUS.INVITED) {
+        await this.userRepository.updateOne(
+          user.id,
+          {
+            status: USER_STATUS.ACTIVE,
+            invitationToken: null,
+          },
+          manager
+        );
+        user.status = USER_STATUS.ACTIVE;
+        user.invitationToken = null;
+        
+        // Also activate the organization user for non-cloud editions
+        if (organizationUser.status === WORKSPACE_USER_STATUS.INVITED) {
+          await this.organizationUsersUtilService.activateOrganization(organizationUser, manager);
+        }
+      }
+
+      // Validate license
+      await this.licenseUserService.validateUser(manager, user?.defaultOrganizationId);
+
+      // For non-cloud editions, return login payload to auto-login user
+      if (!isCloudEdition && response) {
+        return await this.sessionUtilService.generateLoginResultPayload(
+          response,
+          user,
+          defaultWorkspace,
+          false,
+          true,
+          null,
+          manager
+        );
+      }
+
+      // Only send verification email for cloud edition
+      if (isCloudEdition) {
+        this.eventEmitter.emit('emailEvent', {
+          type: EMAIL_EVENTS.SEND_WELCOME_EMAIL,
+          payload: {
+            to: user.email,
+            name: user.firstName,
+            invitationtoken: user.invitationToken,
+          },
+        });
+      }
+
+      return {};
+    }, manager);
+  };
+
+  updateExistingUserDefaultWorkspace = async (
+    userParams: { password: string; firstName: string; lastName: string },
+    existingUser: User,
+    defaultWorkspace: Organization,
+    manager?: EntityManager
+  ) => {
+    return await dbTransactionWrap(async (manager: EntityManager) => {
+      const { password, firstName, lastName } = userParams;
+      // Create organization user entry if not exists
+      const existingOrgUser = await this.organizationUserRepository.findOne({
+        where: {
+          userId: existingUser.id,
+          organizationId: defaultWorkspace.id,
+        },
+      });
+
+      if (existingOrgUser) {
+        throw new NotAcceptableException(
+          'The user is already registered. Please check your inbox for the activation link'
+        );
+      }
+
+      // Update user's default organization ID
+      await this.userRepository.updateOne(
+        existingUser.id,
+        {
+          password,
+          firstName,
+          lastName,
+          source: SOURCE.SIGNUP,
+          defaultOrganizationId: defaultWorkspace.id,
+        },
+        manager
+      );
+
+      await this.organizationUserRepository.createOne(
+        existingUser,
+        defaultWorkspace,
+        true,
+        manager,
+        WORKSPACE_USER_SOURCE.SIGNUP
+      );
+
+      // Add end-user role in default workspace if not already present
+      await this.rolesUtilService.addUserRole(
+        defaultWorkspace.id,
+        { role: USER_ROLE.END_USER, userId: existingUser.id },
+        manager
+      );
+
+      // Validate license
+      await this.licenseUserService.validateUser(manager, existingUser?.defaultOrganizationId);
+
+      // send welcome email
+      this.eventEmitter.emit('emailEvent', {
+        type: EMAIL_EVENTS.SEND_WELCOME_EMAIL,
+        payload: {
+          to: existingUser.email,
+          name: existingUser.firstName,
+          invitationtoken: existingUser.invitationToken,
+        },
+      });
+
+      return {};
+    }, manager);
+  };
 }

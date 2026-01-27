@@ -11,15 +11,26 @@ export const tableConfig = {
         schema: { type: 'string' },
       },
     },
+    dataSourceSelector: {
+      type: 'dropdownMenu',
+      displayName: 'Data source',
+      options: [{ name: 'Raw JSON', value: 'rawJson' }],
+      validation: { schema: { type: 'union', schemas: [{ type: 'string' }, { type: 'array' }, { type: 'object' }] } },
+      newLine: true,
+    },
     data: {
       type: 'code',
-      displayName: 'Table data',
+      displayName: ' ',
       validation: {
         schema: {
           type: 'array',
           element: { type: 'object' },
         },
         defaultValue: "[{ id: 1, name: 'Sarah', email: 'sarah@mail.com' }]",
+      },
+      conditionallyRender: {
+        key: 'dataSourceSelector',
+        value: 'rawJson',
       },
     },
     loadingState: {
@@ -157,7 +168,7 @@ export const tableConfig = {
       defaultValue: 'clientSide',
     },
     actionButtonBackgroundColor: {
-      type: 'color',
+      type: 'colorSwatches',
       displayName: 'Background color',
       validation: {
         schema: { type: 'string' },
@@ -165,7 +176,7 @@ export const tableConfig = {
       },
     },
     actionButtonTextColor: {
-      type: 'color',
+      type: 'colorSwatches',
       displayName: 'Text color',
       validation: {
         schema: { type: 'string' },
@@ -269,14 +280,23 @@ export const tableConfig = {
         schema: { type: 'boolean' },
       },
     },
+    dynamicHeight: {
+      type: 'toggle',
+      displayName: 'Dynamic height',
+      validation: {
+        schema: { type: 'boolean' },
+        defaultValue: false,
+      },
+      section: 'additionalActions',
+    },
   },
   others: {
     showOnDesktop: { type: 'toggle', displayName: 'Show on desktop ' },
     showOnMobile: { type: 'toggle', displayName: 'Show on mobile' },
   },
   defaultSize: {
-    width: 35,
-    height: 456,
+    width: 25,
+    height: 460,
   },
   events: {
     onRowHovered: { displayName: 'Row hovered' },
@@ -292,22 +312,19 @@ export const tableConfig = {
     onTableDataDownload: { displayName: 'Download data' },
   },
   styles: {
-    textColor: {
-      type: 'color',
-      displayName: 'Text Color',
-      validation: {
-        schema: { type: 'string' },
-        defaultValue: '#000',
-      },
-      accordian: 'Data',
+    columnTitleColor: {
+      type: 'colorSwatches',
+      displayName: 'Column title',
+      validation: { schema: { type: 'string' }, defaultValue: 'var(--cc-placeholder-text)' },
+      accordian: 'Column Header',
     },
     columnHeaderWrap: {
       type: 'switch',
-      displayName: 'Column header',
+      displayName: 'Overflow',
       validation: { schema: { type: 'string' } },
-      accordian: 'Data',
+      accordian: 'Column Header',
       options: [
-        { displayName: 'Fixed', value: 'fixed' },
+        { displayName: 'None', value: 'fixed' },
         { displayName: 'Wrap', value: 'wrap' },
       ],
     },
@@ -315,11 +332,26 @@ export const tableConfig = {
       type: 'switch',
       displayName: 'Header casing',
       validation: { schema: { type: 'string' } },
-      accordian: 'Data',
+      accordian: 'Column Header',
       options: [
-        { displayName: 'AA', value: 'uppercase' },
         { displayName: 'As typed', value: 'none' },
+        { displayName: 'AA', value: 'uppercase' },
       ],
+    },
+    columnBackgroundColor: {
+      type: 'colorSwatches',
+      displayName: 'Background',
+      validation: { schema: { type: 'string' }, defaultValue: 'var(--cc-surface2-surface)' },
+      accordian: 'Column Header',
+    },
+    textColor: {
+      type: 'colorSwatches',
+      displayName: 'Text',
+      validation: {
+        schema: { type: 'string' },
+        defaultValue: 'var(--cc-primary-text)',
+      },
+      accordian: 'Data',
     },
     tableType: {
       type: 'select',
@@ -392,11 +424,17 @@ export const tableConfig = {
     },
     actionButtonRadius: {
       type: 'numberInput',
-      displayName: 'Button radius',
+      displayName: 'Action button radius',
       validation: {
         schema: { type: 'union', schemas: [{ type: 'string' }, { type: 'boolean' }] },
       },
-      accordian: 'Action button',
+      accordian: 'Data',
+    },
+    containerBackgroundColor: {
+      type: 'colorSwatches',
+      displayName: 'Background',
+      validation: { schema: { type: 'string' }, defaultValue: 'var(--cc-surface1-surface)' },
+      accordian: 'Container',
     },
     borderRadius: {
       type: 'numberInput',
@@ -405,7 +443,7 @@ export const tableConfig = {
       accordian: 'Container',
     },
     borderColor: {
-      type: 'color',
+      type: 'colorSwatches',
       displayName: 'Border',
       validation: {
         schema: { type: 'string' },
@@ -464,6 +502,34 @@ export const tableConfig = {
       displayName: 'Deselect row',
     },
     {
+      handle: 'selectRows',
+      displayName: 'Select rows',
+      params: [
+        {
+          handle: 'key',
+          displayName: 'Key',
+        },
+        {
+          handle: 'values',
+          displayName: 'Values',
+        },
+      ],
+    },
+    {
+      handle: 'deselectRows',
+      displayName: 'Deselect rows',
+      params: [
+        {
+          handle: 'key',
+          displayName: 'Key',
+        },
+        {
+          handle: 'values',
+          displayName: 'Values',
+        },
+      ],
+    },
+    {
       handle: 'discardChanges',
       displayName: 'Discard Changes',
     },
@@ -515,6 +581,7 @@ export const tableConfig = {
       title: { value: 'Table' },
       visible: { value: '{{true}}' },
       loadingState: { value: '{{false}}' },
+      dataSourceSelector: { value: 'rawJson' },
       data: {
         value:
           "{{ [ \n\t\t{ id: 1, name: 'Olivia Nguyen', email: 'olivia.nguyen@example.com', date: '15/05/2022', phone: 9876543210, interest: ['Reading', 'Traveling','Photography'], photo: 'https://reqres.in/img/faces/7-image.jpg' }, \n\t\t{ id: 2, name: 'Liam Patel', email: 'liam.patel@example.com', date: '20/09/2021', phone: 8765432109, interest: ['Cooking','Gardening','Hiking'], photo: 'https://reqres.in/img/faces/5-image.jpg' }, \n\t\t{ id: 3, name: 'Sophia Reyes', email: 'sophia.reyes@example.com', date: '01/01/2023', phone: 7654321098, interest: ['Music','Dancing','Crafting'], photo: 'https://reqres.in/img/faces/3-image.jpg' }, \n\t\t{ id: 4, name: 'Jacob Hernandez', email: 'jacob.hernandez@example.com', date: '10/11/2022', phone: 6543210987, interest: ['Reading', 'Traveling', 'Volunteering'], photo: 'https://reqres.in/img/faces/1-image.jpg' }, \n\t\t{ id: 5, name: 'William Sanchez', email: 'william.sanchez@example.com', date: '07/01/2021', phone: 4321098765, interest: ['Music', 'Dancing', 'Hiking'], photo: 'https://reqres.in/img/faces/4-image.jpg' }, \n\t\t{ id: 6, name: 'Ethan Morales', email: 'ethan.morales@example.com', date: '05/11/2021', phone: 2109876543, interest: ['Cooking', 'Traveling', 'Photography'], photo: 'https://reqres.in/img/faces/6-image.jpg' }, \n\t\t{ id: 7, name: 'Mia Tiana', email: 'mia.tiana@example.com', date: '21/11/2022', phone: 1098705217, interest: ['Music', 'Gardening', 'Hiking'], photo: 'https://reqres.in/img/faces/2-image.jpg' }, \n\t\t{ id: 8, name: 'Lucas Ramirez', email: 'lucas.ramirez@example.com', date: '31/03/2023', phone: 9876543210, interest: ['Reading', 'Dancing', 'Crafting'], photo: 'https://reqres.in/img/faces/9-image.jpg' }, \n\t\t{ id: 9, name: 'Alexander Vela', email: 'alexander.vela@example.com', date: '07/09/2022', phone: 7654321098, interest: ['Music','Gardening','Photography'], photo: 'https://reqres.in/img/faces/8-image.jpg' }, \n\t\t{ id: 10, name: 'Michael Reyes', email: 'michael.reyes@example.com', date: '25/12/2021', phone: 5432109876, interest: ['Cooking','Crafting','Volunteering'], photo: 'https://reqres.in/img/faces/10-image.jpg' } \n] }}",
@@ -591,8 +658,8 @@ export const tableConfig = {
             columnSize: 130,
           },
           {
-            name: 'phone',
-            key: 'phone',
+            name: 'mobile_number',
+            key: 'mobile_number',
             id: '9c2e3c40572a4aefb8e179ee39a0e1ac9dc2b2e6634be56e1c05be13c3d1de56',
             autogenerated: true,
             fxActiveFields: [],
@@ -633,12 +700,12 @@ export const tableConfig = {
                 value: 'Crafting',
               },
               {
-                label: 'Voluntering',
-                value: 'Voluntering',
+                label: 'Volunteering',
+                value: 'Volunteering',
               },
               {
-                label: 'Garndening',
-                value: 'Garndening',
+                label: 'Gardening',
+                value: 'Gardening',
               },
               {
                 label: 'Dancing',
@@ -664,19 +731,25 @@ export const tableConfig = {
       allowSelection: { value: '{{true}}' },
       visibility: { value: '{{true}}' },
       disabledState: { value: '{{false}}' },
+      dynamicHeight: { value: `{{false}}` },
+      selectRowOnCellEdit: { value: '{{false}}' },
     },
     events: [],
     styles: {
-      textColor: { value: '#000' },
+      columnTitleColor: { value: 'var(--cc-primary-text)' },
+      columnBackgroundColor: { value: 'var(--cc-surface1-surface)' },
+      containerBackgroundColor: { value: 'var(--cc-surface1-surface)' },
+      textColor: { value: 'var(--cc-primary-text)' },
       columnHeaderWrap: { value: 'fixed' },
-      headerCasing: { value: 'uppercase' },
+      headerCasing: { value: 'none' },
       actionButtonRadius: { value: '0' },
       cellSize: { value: 'regular' },
-      borderRadius: { value: '8' },
+      borderRadius: { value: '6' },
+      borderColor: { value: 'var(--cc-weak-border)' },
       tableType: { value: 'table-classic' },
       maxRowHeight: { value: 'auto' },
       maxRowHeightValue: { value: '{{0}}' }, // Setting it here as 0 since TableRowHeightInput component will set the value
-      contentWrap: { value: '{{true}}' },
+      contentWrap: { value: '{{false}}' },
       boxShadow: { value: '0px 0px 0px 0px #00000090' },
       padding: { value: 'default' },
     },

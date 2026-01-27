@@ -7,6 +7,7 @@ import { toast } from 'react-hot-toast';
 import { LinkExpiredPage } from '@/ConfirmationPage/LinkExpiredPage';
 import { onLoginSuccess } from '@/_helpers/platform/utils/auth.utils';
 import { onboarding } from '@/modules/onboarding/services/onboarding.service';
+import { fetchWhiteLabelDetails } from '@/_helpers/white-label/whiteLabelling';
 export const OrganizationInviteRoute = ({ children, isOrgazanizationOnlyInvite, navigate }) => {
   /* Needed to pass invite token to signup page if the user doesn't exist */
   const [isLoading, setLoading] = useState(true);
@@ -18,15 +19,20 @@ export const OrganizationInviteRoute = ({ children, isOrgazanizationOnlyInvite, 
   const [extraProps, setExtraProps] = useState({});
   const searchParams = new URLSearchParams(location?.search);
   const redirectTo = searchParams.get('redirectTo');
+  const organizationId = new URL(window.location).searchParams.get('oid') || '';
 
   useEffect(() => {
     getInvitedUserSession();
+    fetchWhiteLabelDetails(organizationId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getInvitedUserSession = async () => {
     try {
-      const invitedUserSession = await authenticationService.getInvitedUserSession({ organizationToken, accountToken });
+      const invitedUserSession = await authenticationService.getInvitedUserSession({
+        organizationToken,
+        accountToken,
+      });
       const {
         current_organization_id,
         current_organization_slug,
@@ -185,7 +191,9 @@ export const OrganizationInviteRoute = ({ children, isOrgazanizationOnlyInvite, 
           onLoginSuccess(data, navigate);
         })
         .catch(() => {
-          toast.error('Error while setting up your account.', { position: 'top-center' });
+          toast.error('Error while setting up your account.', {
+            position: 'top-center',
+          });
         });
     }
   };

@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Button, ButtonGroup, OverlayTrigger, Popover } from 'react-bootstrap';
 import cx from 'classnames';
+
+import { Button as RadixButton } from '@/components/ui/Button/Button';
 import PlusRectangle from '@/_ui/Icon/solidIcons/PlusRectangle';
 import Remove from '@/_ui/Icon/bulkIcons/Remove';
 import ParameterForm from './ParameterForm';
+import usePopoverObserver from '@/AppBuilder/_hooks/usePopoverObserver';
 
 const ParameterDetails = ({ darkMode, onSubmit, isEdit, name, defaultValue, onRemove, otherParams }) => {
   const [showModal, setShowModal] = useState(false);
@@ -47,6 +50,17 @@ const ParameterDetails = ({ darkMode, onSubmit, isEdit, name, defaultValue, onRe
     }
   };
 
+  usePopoverObserver(
+    document.getElementsByClassName('query-details')[0],
+    isEdit
+      ? document.getElementById(`query-param-${String(name).toLowerCase()}`)
+      : document.getElementById('runjs-param-add-btn'),
+    document.getElementById('parameter-form-popover'),
+    showModal,
+    () => setShowModal(true),
+    closeMenu
+  );
+
   return (
     <OverlayTrigger
       trigger="click"
@@ -81,18 +95,17 @@ const ParameterDetails = ({ darkMode, onSubmit, isEdit, name, defaultValue, onRe
             onRemove={onRemove}
           />
         ) : (
-          <button
-            onClick={() => setShowModal((show) => !show)}
-            className="add-params-btn"
+          <RadixButton
+            isLucid
+            size="medium"
+            variant="outline"
+            leadingIcon="plus"
             id="runjs-param-add-btn"
             data-cy={`runjs-add-param-button`}
-            style={{ background: 'none', border: 'none' }}
+            onClick={() => setShowModal((show) => !show)}
           >
-            <p className="m-0 text-default">
-              <PlusRectangle fill={'var(--icons-default)'} width={15} />
-              <span style={{ marginLeft: '6px' }}>Add</span>
-            </p>
-          </button>
+            Add
+          </RadixButton>
         )}
       </span>
     </OverlayTrigger>

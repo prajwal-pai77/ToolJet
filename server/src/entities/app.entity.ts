@@ -19,14 +19,21 @@ import { User } from './user.entity';
 import { GroupApps } from './group_apps.entity';
 import { AppGroupPermission } from './app_group_permission.entity';
 import { AiConversation } from './ai_conversation.entity';
+import { Organization } from './organization.entity';
+import { APP_TYPES } from '@modules/apps/constants';
 
 @Entity({ name: 'apps' })
 export class App extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'type' })
-  type: string = 'front-end';
+  @Column({
+    name: 'type',
+    type: 'enum',
+    enum: APP_TYPES,
+    default: APP_TYPES.FRONT_END,
+  })
+  type: APP_TYPES;
 
   @Column({ name: 'name' })
   name: string;
@@ -46,6 +53,10 @@ export class App extends BaseEntity {
   @Column({ name: 'organization_id' })
   organizationId: string;
 
+  @ManyToOne(() => Organization)
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization;
+
   @Column({ name: 'current_version_id' })
   currentVersionId: string;
 
@@ -57,6 +68,40 @@ export class App extends BaseEntity {
 
   @Column({ name: 'workflow_enabled', default: false })
   workflowEnabled: boolean;
+
+  @Column({ name: 'is_initialised_from_prompt', default: false })
+  isInitialisedFromPrompt: boolean;
+
+  @Column({ name: 'app_generated_from_prompt', default: false })
+  appGeneratedFromPrompt: boolean;
+
+  @Column({
+    type: 'enum',
+    enumName: 'app_builder_mode',
+    name: 'app_builder_mode',
+    enum: ['ai', 'visual'],
+    default: 'visual',
+  })
+  appBuilderMode: string;
+
+  @Column({ name: 'ai_generation_metadata', type: 'jsonb', nullable: true })
+  aiGenerationMetadata: {
+    steps: {
+      name: string;
+      id: string;
+      loadingStates: string[];
+    }[];
+    appInitialisationPrompt?: string;
+    appName?: string;
+    completedSteps: string[];
+    activeStep: string;
+    version: string;
+    dataSource: {
+      kind: string;
+      name: string;
+      id: string;
+    };
+  };
 
   @CreateDateColumn({ default: () => 'now()', name: 'created_at' })
   createdAt: Date;
@@ -95,17 +140,23 @@ export class App extends BaseEntity {
   })
   groupPermissions: GroupPermission[];
 
-  @OneToOne(() => AppGitSync, (appGitSync) => appGitSync.app, { onDelete: 'CASCADE' })
+  @OneToOne(() => AppGitSync, (appGitSync) => appGitSync.app, {
+    onDelete: 'CASCADE',
+  })
   appGitSync: AppGitSync;
 
-  @OneToMany(() => GroupApps, (groupApps) => groupApps.app, { onDelete: 'CASCADE' })
+  @OneToMany(() => GroupApps, (groupApps) => groupApps.app, {
+    onDelete: 'CASCADE',
+  })
   appGroups: GroupApps[];
 
   //Depreciated
   @OneToMany(() => AppGroupPermission, (appGroupPermission) => appGroupPermission.app, { onDelete: 'CASCADE' })
   appGroupPermissions: AppGroupPermission[];
 
-  @OneToMany(() => AiConversation, (aiConversation) => aiConversation.app, { onDelete: 'CASCADE' })
+  @OneToMany(() => AiConversation, (aiConversation) => aiConversation.app, {
+    onDelete: 'CASCADE',
+  })
   aiConversations: AiConversation[];
 
   public editingVersion;

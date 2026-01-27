@@ -18,14 +18,14 @@ export class AiConversationMessageRepository extends Repository<AiConversationMe
       order: {
         createdAt: 'ASC',
       },
-      relations: ['aiResponseVote'],
+      relations: ['aiResponseVote', 'artifacts'],
     });
   }
 
   async findById(id: string): Promise<AiConversationMessage> {
     return await this.findOne({
       where: { id },
-      relations: ['conversation', 'votes'],
+      relations: ['aiResponseVote', 'aiConversation'],
     });
   }
 

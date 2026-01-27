@@ -12,6 +12,7 @@ import {
 } from 'typeorm';
 import { GranularPermissions } from './granular_permissions.entity';
 import { GroupApps } from './group_apps.entity';
+import { APP_TYPES } from '@modules/apps/constants';
 
 @Entity({ name: 'apps_group_permissions' })
 export class AppsGroupPermissions extends BaseEntity {
@@ -22,6 +23,13 @@ export class AppsGroupPermissions extends BaseEntity {
   @Column({ name: 'granular_permission_id', unique: true })
   granularPermissionId: string;
 
+  @Column({
+    name: 'app_type',
+    type: 'enum',
+    enum: APP_TYPES,
+  })
+  appType: APP_TYPES;
+
   @Column({ name: 'can_edit', nullable: false, default: false })
   canEdit: boolean;
 
@@ -30,6 +38,18 @@ export class AppsGroupPermissions extends BaseEntity {
 
   @Column({ name: 'hide_from_dashboard', nullable: false, default: false })
   hideFromDashboard: boolean;
+
+  @Column({ name: 'can_access_development', nullable: false, default: true })
+  canAccessDevelopment: boolean;
+
+  @Column({ name: 'can_access_staging', nullable: false, default: true })
+  canAccessStaging: boolean;
+
+  @Column({ name: 'can_access_production', nullable: false, default: true })
+  canAccessProduction: boolean;
+
+  @Column({ name: 'can_access_released', nullable: false, default: true })
+  canAccessReleased: boolean;
 
   @CreateDateColumn({ default: () => 'now()', name: 'created_at' })
   createdAt: Date;

@@ -2,8 +2,14 @@ import React, { useEffect } from 'react';
 import { default as BootstrapModal } from 'react-bootstrap/Modal';
 import { Container as SubContainer } from '@/AppBuilder/AppCanvas/Container';
 import { ConfigHandle } from '@/AppBuilder/AppCanvas/ConfigHandle/ConfigHandle';
+import { getCanvasHeight, isFalsyOrMultipleZeros } from '@/AppBuilder/Widgets/ModalV2/helpers/utils';
 import { ModalHeader } from '@/AppBuilder/Widgets/ModalV2/Components/Header';
 import { ModalFooter } from '@/AppBuilder/Widgets/ModalV2/Components/Footer';
+import useStore from '@/AppBuilder/_stores/store';
+import { useActiveSlot } from '@/AppBuilder/_hooks/useActiveSlot';
+import Spinner from '@/_ui/Spinner';
+import classNames from 'classnames';
+import { shallow } from 'zustand/shallow';
 
 export const ModalWidget = ({ ...restProps }) => {
   const {
@@ -24,10 +30,43 @@ export const ModalWidget = ({ ...restProps }) => {
     headerHeight,
     footerHeight,
     onSelectModal,
+    modalHeight,
+    isFullScreen,
+    subContainerIndex,
+    isDynamicHeightEnabled,
   } = restProps['modalProps'];
+
+  const setComponentProperty = useStore((state) => state.setComponentProperty);
+  const activeSlot = useActiveSlot(id); // Track the active slot for this widget
+  const temporaryLayouts = useStore((state) => {
+    const transformedId = subContainerIndex ? `${id}-${subContainerIndex}` : id;
+    return state.temporaryLayouts?.[`${transformedId}-body`];
+  }, shallow);
+  const _modalHeight = isFullScreen ? '100vh' : `${modalHeight}px`;
+
+  const headerMaxHeight = isFullScreen
+    ? `calc(${_modalHeight} - ${footerHeight} - 100px - 10px)`
+    : parseInt(_modalHeight, 10) - parseInt(footerHeight, 10) - 100 - 10;
+  const footerMaxHeight = isFullScreen
+    ? `calc(${_modalHeight} - ${headerHeight} - 100px - 10px)`
+    : parseInt(_modalHeight, 10) - parseInt(headerHeight, 10) - 100 - 10;
+
+  const updateHeaderSizeInStore = ({ newHeight }) => {
+    const _height = parseInt(newHeight, 10);
+    setComponentProperty(id, `headerHeight`, _height, 'properties', 'value', false);
+  };
+
+  const updateFooterSizeInStore = ({ newHeight }) => {
+    const _height = parseInt(newHeight, 10);
+    setComponentProperty(id, `footerHeight`, _height, 'properties', 'value', false);
+  };
 
   // When the modal body is clicked capture it and use the callback to set the selected component as modal
   const handleModalSlotClick = (event) => {
+    // If shift is pressed, don't select the component since its used for multi select
+    const isShiftPressed = event.shiftKey || event.nativeEvent?.shiftKey || false;
+    if (isShiftPressed) return;
+
     const clickedComponentId = event.target.getAttribute('component-id');
     const clickedId = event.target.getAttribute('id');
 
@@ -53,10 +92,50 @@ export const ModalWidget = ({ ...restProps }) => {
     };
   }, []);
 
+  useEffect(() => {
+    setTimeout(() => {
+      const modalContent = document.querySelector(`.tj-modal-content-${id}`);
+      if (restProps.show && modalContent) {
+        if (!isFalsyOrMultipleZeros(modalHeight)) {
+          if (isDynamicHeightEnabled) {
+            const canvasHeaderHeight = getCanvasHeight(headerHeight);
+            const canvasFooterHeight = getCanvasHeight(footerHeight);
+            const canvasContentHeight = temporaryLayouts?.height
+              ? temporaryLayouts?.height
+              : getCanvasHeight(modalBodyHeight);
+            const totalHeight = canvasHeaderHeight + canvasFooterHeight + canvasContentHeight;
+            modalContent.style.setProperty('height', `${totalHeight}px`, 'important');
+            modalContent.style.setProperty('min-height', isFullScreen ? '100%' : `${modalHeight}px`, 'important');
+            modalContent.style.setProperty('max-height', isFullScreen ? '100%' : `85vh`, 'important');
+          } else {
+            modalContent.style.setProperty('height', _modalHeight, 'important');
+            modalContent.style.setProperty('max-height', isFullScreen ? '100%' : modalHeight, 'important');
+          }
+        } else {
+          modalContent.style.setProperty('height', '5px', 'important');
+        }
+      }
+    }, 100);
+  }, [
+    modalHeight,
+    modalBodyHeight,
+    headerHeight,
+    footerHeight,
+    showHeader,
+    showFooter,
+    restProps.show,
+    isFullScreen,
+    isDynamicHeightEnabled,
+    temporaryLayouts,
+  ]);
+
   return (
     <BootstrapModal
       {...restProps}
-      contentClassName="modal-component tj-modal-widget-content"
+      contentClassName={classNames(
+        `modal-component tj-modal--container tj-modal-widget-content tj-modal-content-${id}`,
+        isDynamicHeightEnabled && `dynamic-${id}`
+      )}
       animation={true}
       onEscapeKeyDown={(e) => {
         e.preventDefault();
@@ -74,6 +153,8 @@ export const ModalWidget = ({ ...restProps }) => {
           setSelectedComponentAsModal={onSelectModal}
           componentType="Modal"
           isModalOpen={true}
+          visibility={true}
+          subContainerIndex={null}
         />
       )}
       {showHeader && (
@@ -87,6 +168,10 @@ export const ModalWidget = ({ ...restProps }) => {
           onHideModal={onHideModal}
           headerHeight={headerHeight}
           onClick={handleModalSlotClick}
+          updateHeaderSizeInStore={updateHeaderSizeInStore}
+          activeSlot={activeSlot}
+          headerMaxHeight={headerMaxHeight}
+          isFullScreen={isFullScreen}
         />
       )}
       <BootstrapModal.Body style={{ ...customStyles.modalBody }} ref={parentRef} id={id} data-cy={`modal-body`}>
@@ -105,15 +190,19 @@ export const ModalWidget = ({ ...restProps }) => {
             <SubContainer
               id={`${id}`}
               canvasHeight={modalBodyHeight}
-              styles={{ backgroundColor: customStyles.modalBody.backgroundColor, height: 'inherit' }}
+              styles={{
+                backgroundColor: customStyles.modalBody.backgroundColor,
+                overflowY: isDisabled ? 'hidden' : 'auto',
+              }}
               canvasWidth={modalWidth}
               darkMode={darkMode}
+              componentType="ModalV2"
             />
           </>
         ) : (
-          <div className="p-2">
+          <div className="d-flex justify-content-center align-items-center" style={{ height: '100%' }}>
             <center>
-              <div className="spinner-border mt-5" role="status"></div>
+              <Spinner />
             </center>
           </div>
         )}
@@ -127,6 +216,10 @@ export const ModalWidget = ({ ...restProps }) => {
           width={modalWidth}
           footerHeight={footerHeight}
           onClick={handleModalSlotClick}
+          updateFooterSizeInStore={updateFooterSizeInStore}
+          activeSlot={activeSlot}
+          footerMaxHeight={footerMaxHeight}
+          isFullScreen={isFullScreen}
         />
       )}
     </BootstrapModal>
